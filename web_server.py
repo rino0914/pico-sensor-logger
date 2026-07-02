@@ -94,7 +94,8 @@ HTML_END = """"/>
 class WebServer:
     def __init__(
         self,
-        sensors,
+        histories,
+        sensing_state,
         rtc,
         led,
         file_lock,
@@ -104,7 +105,8 @@ class WebServer:
         host="0.0.0.0",
         port=80,
     ):
-        self.sensors = sensors
+        self.histories = histories
+        self.sensing_state = sensing_state
         self.rtc = rtc
         self.led = led
         self.file_lock = file_lock
@@ -115,8 +117,8 @@ class WebServer:
         self.state = "초기화 완료"
         self.tcp_server = TcpServer(
             self.handle_request,
-            host=host,
-            port=port,
+            host = host,
+            port = port,
         )
 
     def start(self):
@@ -161,7 +163,7 @@ class WebServer:
             raise ValueError("Invalid HTTP request line")
 
     def _delete_csv(self):
-        if self.sensors[0].is_sensing:
+        if self.sensing_state.enabled:
             return
 
         self.file_lock.acquire()
@@ -173,22 +175,21 @@ class WebServer:
 
         self.data_lock.acquire()
         try:
-            for sensor in self.sensors:
-                sensor.value_count = 0
-                sensor.last_index = -1
+            for history in self.histories:
+                history.clear()
         finally:
             self.data_lock.release()
 
         self.state = "기존 데이터 파일 삭제되었음"
 
     def _start_sensing(self):
-        if self.sensors[0].is_sensing:
+        if self.sensing_state.enabled:
             return
 
         self.rtc.datetime((2024, 6, 3, 1, 0, 0, 0, 0))
         self.data_lock.acquire()
         try:
-            self.sensors[0].is_sensing = True
+            self.sensing_state.enabled = True
         finally:
             self.data_lock.release()
         self.state = "측정중"
@@ -196,7 +197,7 @@ class WebServer:
     def _stop_sensing(self):
         self.data_lock.acquire()
         try:
-            self.sensors[0].is_sensing = False
+            self.sensing_state.enabled = False
         finally:
             self.data_lock.release()
         self.state = "측정 멈춤"
@@ -222,28 +223,29 @@ class WebServer:
         self.data_lock.acquire()
         try:
             minimum_ranges = (50.0, 3.0, 10.0)
-            for sensor, minimum_range in zip(
-                self.sensors,
+            for history, minimum_range in zip(
+                self.histories,
                 minimum_ranges,
             ):
-                sensor.calculate_chart_scale(minimum_range)
+                history.calculate_chart_scale(minimum_range)
 
             paths = tuple(
-                sensor.build_svg_path() for sensor in self.sensors
+                history.build_svg_path()
+                for history in self.histories
             )
             sensor_values = tuple(
-                str(sensor.values[sensor.last_index])
-                for sensor in self.sensors
+                str(history.latest_value())
+                for history in self.histories
             )
-            first_sensor = self.sensors[0]
-            third_sensor = self.sensors[2]
+            first_history = self.histories[0]
+            third_history = self.histories[2]
             chart_values = (
-                first_sensor.chart_min_value + first_sensor.chart_step,
-                first_sensor.chart_min_value + first_sensor.chart_step * 2,
-                first_sensor.chart_min_value + first_sensor.chart_step * 3,
-                third_sensor.chart_min_value + third_sensor.chart_step,
-                third_sensor.chart_min_value + third_sensor.chart_step * 2,
-                third_sensor.chart_min_value + third_sensor.chart_step * 3,
+                first_history.chart_min_value + first_history.chart_step,
+                first_history.chart_min_value + first_history.chart_step * 2,
+                first_history.chart_min_value + first_history.chart_step * 3,
+                third_history.chart_min_value + third_history.chart_step,
+                third_history.chart_min_value + third_history.chart_step * 2,
+                third_history.chart_min_value + third_history.chart_step * 3,
             )
         finally:
             self.data_lock.release()

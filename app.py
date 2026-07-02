@@ -1,5 +1,8 @@
 import network
-import const
+
+
+CONFIG_FILE = "config.json"
+WIFI_POWER_SAVE_DISABLED = 0xA11140
 
 try:
     import ujson as json
@@ -7,9 +10,18 @@ except ImportError:
     import json
 
 
+class SensingState:
+    def __init__(self):
+        self.enabled = False
+
+
 def start_access_point(ssid, password, led=None):
     ap = network.WLAN(network.AP_IF)
-    ap.config(ssid=ssid, password=password, pm=const.WIFI_POWER_SAVE_DISABLED)
+    ap.config(
+        ssid=ssid,
+        password=password,
+        pm=WIFI_POWER_SAVE_DISABLED,
+    )
     ap.active(True)
 
     if not ap.active():
@@ -26,14 +38,14 @@ def start_access_point(ssid, password, led=None):
     return ap
 
 
-def load_config(path="config.json"):
+def load_config():
     try:
-        with open(path, "r") as config_file:
+        with open(CONFIG_FILE, "r") as config_file:
             config = json.load(config_file)
     except OSError:
-        raise RuntimeError("Cannot read config file: %s" % path)
+        raise RuntimeError("Cannot read config file: %s" % CONFIG_FILE)
     except ValueError:
-        raise RuntimeError("Invalid JSON in config file: %s" % path)
+        raise RuntimeError("Invalid JSON in config file: %s" % CONFIG_FILE)
 
     if not isinstance(config, dict):
         raise RuntimeError("Config root must be a JSON object")
