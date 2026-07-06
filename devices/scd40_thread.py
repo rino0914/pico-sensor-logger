@@ -1,4 +1,6 @@
+import _thread
 from time import sleep_ms
+from machine import Pin
 from micropython import const as _const
 
 # 데이터 준비 상태 확인용 하위 11비트 마스크
@@ -35,6 +37,7 @@ SCD40_SDA_PIN = 8
 # 명령 처리 대기시간과 상태 LED 핀
 SCD40_COMMAND_DELAY_MS = 1
 SCD40_STOP_DELAY_MS    = 500
+SCD40_POLL_INTERVAL_MS = 500
 SENSOR_STATUS_LED_PIN  = 1
 
 # @brief SCD40 통신·응답 오류 기본 예외
@@ -46,16 +49,47 @@ class SCD40CrcError(Exception):
     pass
 
 # @brief SCD40 주기 측정, 상태 확인, 측정값 변환 API
-class SCD40:
+class SCD40Thread:
     # @brief SCD40 드라이버와 송수신 버퍼 초기화
     # @param i2c machine.I2C 호환 객체
     # @return 없음
-    def __init__(self, i2c):
+    def __init__(self, i2c, connector, time_service):
         self.i2c = i2c
         self.address = SCD40_ADDRESS
-        self._command_buffer     = bytearray(SCD40_COMMAND_BUFFER_SIZE        )
+
+        # 센서값을 읽기위한 임시버퍼
+        self._command_buffer     = bytearray(SCD40_COMMAND_BUFFER_SIZE)
         self._status_buffer      = bytearray(SCD40_STATUS_BUFFER_SIZE)
         self._measurement_buffer = bytearray(SCD40_MEASUREMENT_BUFFER_SIZE)
+        
+        self.connector           = connector # 수신 데이터를 저장관리하는 데이터 커넥터
+        self.time_service        = time_service # 시간 동기화 스레드
+        self.status_led          = Pin(SENSOR_STATUS_LED_PIN, Pin.OUT)
+        self._started            = False
+        self._running            = False
+
+    # @brief 센서 측정 루프를 새 스레드에서 시작
+    # @return 생성된 스레드 식별자
+    def start(self):
+        if self._started:
+            raise RuntimeError("SCD40 thread is already running")
+
+        self._started = True
+        self._running = True
+        try:
+            return _thread.start_new_thread(self.run, ())
+        except Exception:
+            self._started = False
+            self._running = False
+            raise
+
+    # @brief 센서 측정 스레드에 종료 요청
+    def stop(self):
+        self.connector.stop_sensing()
+        self._running = False
+
+    def is_running(self):
+        return self._started
 
     # @brief 주기 측정 시작 명령 전송
     # @return 없음
@@ -92,6 +126,60 @@ class SCD40:
         if not self.is_data_ready():
             return None
         return self.read_measurement()
+
+    # @brief 준비된 측정값 한 건을 읽어 DataConnector에 전달
+    # @return publish한 (CO2, 온도, 습도) 튜플, 미준비 시 None
+    def poll_once(self):
+        measurement = self.read_if_ready()
+        if measurement is None:
+            return None
+
+        co2, temperature, humidity = measurement
+        timestamp = self.time_service.now()
+        self.connector.publish(
+            timestamp,
+            co2,
+            humidity,
+            temperature,
+        )
+        return measurement
+
+    # @brief 주기 측정을 시작하고 측정값을 계속 DataConnector에 전달
+    # @param interval_ms 데이터 준비 상태를 확인하는 간격(ms)
+    # @return 없음: stop() 요청 전까지 반복
+    def run(self, interval_ms=SCD40_POLL_INTERVAL_MS):
+        measurement_started = False
+        try:
+            while self._running and not (
+                self.time_service.is_synchronized()
+                and self.connector.is_sensing_enabled()
+            ):
+                sleep_ms(interval_ms)
+
+            if not self._running:
+                return
+
+            self.restart_periodic_measurement()
+            measurement_started = True
+            self.status_led.on()
+
+            while self._running:
+                if self.connector.is_sensing_enabled():
+                    try:
+                        self.poll_once()
+                    except (OSError, RuntimeError, SCD40CrcError) as error:
+                        print("SCD40 measurement failed:", error)
+
+                sleep_ms(interval_ms)
+        finally:
+            if measurement_started:
+                try:
+                    self.stop_periodic_measurement()
+                except OSError as error:
+                    print("SCD40 stop failed:", error)
+            self.status_led.off()
+            self._running = False
+            self._started = False
 
     # @brief 16비트 명령의 상위·하위 바이트 전송
     # @param command SCD40 16비트 명령 코드

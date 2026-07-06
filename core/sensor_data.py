@@ -1,14 +1,7 @@
 from array import array
 
 MAX_ARRAY_SIZE   = 200
-CHART_HEIGHT     = 300.0
-PLOT_HEIGHT      = 280.0
-PLOT_MARGIN      = 10.0
-PLOT_LEFT        = 70.0
-PLOT_BOTTOM      = CHART_HEIGHT - PLOT_MARGIN
-PLOT_WIDTH       = 380.0
-PLOT_X_INTERVAL  = PLOT_WIDTH / MAX_ARRAY_SIZE
-Y_AXIS_DIVISIONS = 4.0
+
 
 # @brief CO2, 습도, 온도 측정값을 고정 크기 원형 버퍼에 저장하고 통계 계산
 # @note 오래된 데이터부터 새 데이터 순서로 접근하기 위해 논리 인덱스를 사용
@@ -115,12 +108,32 @@ class SensorStatsBuffer:
     # @raise ValueError 지원하지 않는 필드 이름인 경우
     def get_values(self, field_name):
         if field_name == self.FIELD_CO2:
-            return self.co2
+            source = self.co2
         elif field_name == self.FIELD_HUMIDITY:
-            return self.humidity
+            source = self.humidity
         elif field_name == self.FIELD_TEMPERTURE:
-            return self.temperture
-        raise ValueError("invalid field_name")
+            source = self.temperture
+        else:
+            raise ValueError("invalid field_name")
+
+        # 락 해제 후에도 호출자가 안전하게 사용할 수 있도록 복사본 반환
+        return array("f", source)
+
+    # @brief 현재 유효한 차트 데이터를 오래된 순서대로 복사
+    # @return (CO2 배열, 온도 배열, 습도 배열)
+    def chart_snapshot(self):
+        co2_values = array("f", [0.0] * self.count)
+        temperature_values = array("f", [0.0] * self.count)
+        humidity_values = array("f", [0.0] * self.count)
+        start = self._start_index()
+
+        for offset in range(self.count):
+            index = (start + offset) % self.size
+            co2_values[offset] = self.co2[index]
+            temperature_values[offset] = self.temperture[index]
+            humidity_values[offset] = self.humidity[index]
+
+        return co2_values, temperature_values, humidity_values
 
     # @brief 가장 최근에 추가된 측정값 반환
     # @return (CO2, 습도, 온도) 튜플, 데이터가 없으면 None
@@ -233,101 +246,3 @@ class SensorStatsBuffer:
             self.maximums(),
             self.averages(),
         )
-
-
-# @brief 단일 센서 항목의 원형 버퍼와 차트 계산 API
-class SensorHistory:
-    # @brief 센서 히스토리 초기화
-    # @param name 센서 항목 이름
-    def __init__(self, name):
-        self.name = name
-        self.values = array("f", [0.0] * MAX_ARRAY_SIZE)
-        self.clear()
-
-    # @brief 저장 데이터와 차트 상태 초기화
-    def clear(self):
-        self.value_count = 0
-        self.last_index = -1
-        self.min_value = 0.0
-        self.max_value = 0.0
-        self.value_range = 0.0
-        self.scale_factor = 0.0
-        self.chart_step = 0.0
-        self.chart_min_value = 0.0
-
-    # @brief 센서값 추가
-    # @param value 센서 측정값
-    def add(self, value):
-        self.last_index = (self.last_index + 1) % MAX_ARRAY_SIZE
-        self.values[self.last_index] = value
-        if self.value_count < MAX_ARRAY_SIZE:
-            self.value_count += 1
-
-    # @brief 최신 센서값 조회
-    # @return 최신값, 데이터가 없으면 0.0
-    def latest_value(self):
-        if self.value_count == 0:
-            return 0.0
-        return self.values[self.last_index]
-
-    # @brief 차트 최솟값·최댓값·배율 계산
-    # @param minimum_range 최소 표시 범위
-    def calculate_chart_scale(self, minimum_range):
-        if self.value_count == 0:
-            return
-
-        index = self.last_index
-        min_value = self.values[index]
-        max_value = min_value
-
-        for _ in range(self.value_count - 1):
-            index = (index - 1) % MAX_ARRAY_SIZE
-            value = self.values[index]
-            if value < min_value:
-                min_value = value
-            elif value > max_value:
-                max_value = value
-
-        value_range = max_value - min_value
-        if value_range < minimum_range:
-            center = (min_value + max_value) / 2
-            half_range = minimum_range / 2
-            min_value = center - half_range
-            max_value = center + half_range
-            value_range = minimum_range
-
-        self.min_value = min_value
-        self.max_value = max_value
-        self.value_range = value_range
-        self.scale_factor = PLOT_HEIGHT / value_range
-        self.chart_step = (
-            value_range
-            * CHART_HEIGHT
-            / PLOT_HEIGHT
-            / Y_AXIS_DIVISIONS
-        )
-        self.chart_min_value = (
-            min_value - value_range * PLOT_MARGIN / PLOT_HEIGHT
-        )
-
-    # @brief SVG path 문자열 생성
-    # @return SVG 이동·선 명령 문자열
-    def build_svg_path(self):
-        if self.value_count == 0:
-            return ""
-
-        start_index = (
-            self.last_index - self.value_count + 1
-        ) % MAX_ARRAY_SIZE
-        commands = [None] * self.value_count
-
-        for offset in range(self.value_count):
-            index = (start_index + offset) % MAX_ARRAY_SIZE
-            x = PLOT_LEFT + offset * PLOT_X_INTERVAL
-            y = PLOT_BOTTOM - (
-                self.values[index] - self.min_value
-            ) * self.scale_factor
-            command = "M" if offset == 0 else "L"
-            commands[offset] = "%s %.0f %.0f" % (command, x, y)
-
-        return " ".join(commands)

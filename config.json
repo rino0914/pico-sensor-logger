@@ -8,5 +8,10 @@
       "gateway": "192.168.45.1",
       "dns": "8.8.8.8"
     }
+  },
+
+  "logfile": {
+    "filename": "data-SCD40-1.csv",
+    "field_names": ["time", "CO2(ppm)", "temerture(C)","humidity(%)" ]
   }
 }
