@@ -1,24 +1,24 @@
 from core.sensor_data import MAX_ARRAY_SIZE
 
 
-CHART_HEIGHT = 300.0
-PLOT_HEIGHT = 280.0
-PLOT_MARGIN = 10.0
-PLOT_LEFT = 70.0
-PLOT_RIGHT = 450.0
-PLOT_BOTTOM = CHART_HEIGHT - PLOT_MARGIN
-PLOT_WIDTH = PLOT_RIGHT - PLOT_LEFT
-PLOT_X_INTERVAL = PLOT_WIDTH / MAX_ARRAY_SIZE
+CHART_HEIGHT     = 300.0
+PLOT_HEIGHT      = 280.0
+PLOT_MARGIN      = 10.0
+PLOT_LEFT        = 70.0
+PLOT_RIGHT       = 450.0
+PLOT_BOTTOM      = CHART_HEIGHT - PLOT_MARGIN
+PLOT_WIDTH       = PLOT_RIGHT - PLOT_LEFT
+PLOT_X_INTERVAL  = PLOT_WIDTH / MAX_ARRAY_SIZE
 Y_AXIS_DIVISIONS = 4.0
 
 
 class ChartScale:
     def __init__(self):
-        self.min_value = 0.0
-        self.max_value = 0.0
-        self.value_range = 0.0
-        self.scale_factor = 0.0
-        self.chart_step = 0.0
+        self.min_value       = 0.0
+        self.max_value       = 0.0
+        self.value_range     = 0.0
+        self.scale_factor    = 0.0
+        self.chart_step      = 0.0
         self.chart_min_value = 0.0
 
 

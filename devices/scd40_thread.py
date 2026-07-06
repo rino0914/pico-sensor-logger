@@ -152,7 +152,7 @@ class SCD40Thread:
         try:
             while self._running and not (
                 self.time_service.is_synchronized()
-                and self.connector.is_sensing_enabled()
+                and self.connector.is_enabled()
             ):
                 sleep_ms(interval_ms)
 
@@ -164,7 +164,7 @@ class SCD40Thread:
             self.status_led.on()
 
             while self._running:
-                if self.connector.is_sensing_enabled():
+                if self.connector.is_enabled():
                     try:
                         self.poll_once()
                     except (OSError, RuntimeError, SCD40CrcError) as error:

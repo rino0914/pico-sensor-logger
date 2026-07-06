@@ -250,7 +250,7 @@ class WebServer:
             raise ValueError("Invalid time synchronization request")
 
         self.time_service.synchronize(*values)
-        if not self.connector.is_sensing_enabled():
+        if not self.connector.is_enabled():
             self.state = "시간 동기화 완료"
 
     @staticmethod
@@ -283,7 +283,7 @@ class WebServer:
             pass
 
     def _delete_csv(self):
-        if self.connector.is_sensing_enabled():
+        if self.connector.is_enabled():
             self.state = "측정 중에는 파일을 삭제할 수 없음"
             return
 
@@ -292,7 +292,7 @@ class WebServer:
         self.state = "기존 데이터 파일 삭제되었음"
 
     def _start_sensing(self):
-        if self.connector.is_sensing_enabled():
+        if self.connector.is_enabled():
             return
 
         if not self.time_service.is_synchronized():

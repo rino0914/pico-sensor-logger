@@ -37,14 +37,11 @@ class DataSnapshot:
         self.dropped_count = dropped_count
         self.sensing_enabled = sensing_enabled
 
-
+# @brief 센서, 파일 저장기, 웹 서버 사이에서 측정 데이터를 전달한다.
+#        측정 히스토리는 SensorStatsBuffer가 담당하고, 파일 저장 대기 데이터는
+#        고정 크기 원형 큐에 보관한다. 공유 상태는 이 클래스의 락으로 보호한다.
 class DataConnector:
-    """센서, 파일 저장기, 웹 서버 사이에서 측정 데이터를 전달한다.
-
-    측정 히스토리는 SensorStatsBuffer가 담당하고, 파일 저장 대기 데이터는
-    고정 크기 원형 큐에 보관한다. 공유 상태는 이 클래스의 락으로 보호한다.
-    """
-
+  
     def __init__(self, queue_size=DEFAULT_QUEUE_SIZE):
         if queue_size <= 0:
             raise ValueError("queue_size must be greater than zero")
@@ -53,46 +50,43 @@ class DataConnector:
         self._stats_buffer = SensorStatsBuffer()
 
         # Pico의 메모리 사용량이 계속 늘지 않도록 고정 크기 큐를 사용한다.
-        self._queue = [None] * queue_size
-        self._queue_size = queue_size
-        self._queue_head = 0
-        self._queue_tail = 0
-        self._queue_count = 0
+        self._queue         = [None] * queue_size
+        self._queue_size    = queue_size
+        self._queue_head    = 0
+        self._queue_tail    = 0
+        self._queue_count   = 0
         self._dropped_count = 0
-        self._sensing_enabled = False
-        self._latest_timestamp = None
+
+        self._sensing_enabled    = False
+        self._latest_timestamp   = None
         self._last_publish_ticks = None
 
+    # @brief 센서 측정과 데이터 발행을 허용
     def start_sensing(self):
-        """센서 측정과 데이터 발행을 허용한다."""
         self._lock.acquire()
         try:
             self._sensing_enabled = True
         finally:
             self._lock.release()
 
+    # @brief 센서 측정과 데이터 발행 중지
     def stop_sensing(self):
-        """센서 측정과 데이터 발행을 중지한다."""
         self._lock.acquire()
         try:
             self._sensing_enabled = False
         finally:
             self._lock.release()
-
-    def is_sensing_enabled(self):
-        """현재 측정 활성 상태를 반환한다."""
+    # @brief 현재 측정 활성 상태 반환
+    def is_enabled(self):
         self._lock.acquire()
         try:
             return self._sensing_enabled
         finally:
             self._lock.release()
-
+    # @brief 새 측정값을 통계 버퍼와 파일 저장 큐에 함께 등록
+    #        반환값은 타임스탬프를 포함한 파일 저장용 튜플
+    #        큐가 가득 차면 가장 오래된 미저장 데이터를 버리고 새 값을 보관
     def publish(self, timestamp, co2, humidity, temperature):
-        """새 측정값을 통계 버퍼와 파일 저장 큐에 함께 등록한다.
-
-        큐가 가득 차면 가장 오래된 미저장 데이터를 버리고 새 값을 보관한다.
-        반환값은 타임스탬프를 포함한 파일 저장용 튜플이다.
-        """
         file_record = (timestamp, co2, humidity, temperature)
 
         self._lock.acquire()
@@ -119,12 +113,9 @@ class DataConnector:
             return file_record
         finally:
             self._lock.release()
-
+    # @brief 가장 오래된 파일 저장 대기 값을 반환
+    #        대기 중인 데이터가 없으면 None을 반환
     def consume(self):
-        """가장 오래된 파일 저장 대기 값을 반환한다.
-
-        대기 중인 데이터가 없으면 None을 반환한다.
-        """
         self._lock.acquire()
         try:
             if self._queue_count == 0:
@@ -139,6 +130,7 @@ class DataConnector:
             return measurement
         finally:
             self._lock.release()
+    
 
     def latest(self):
         """가장 최근 측정값을 반환한다."""
