@@ -1,7 +1,7 @@
 import socket
 
 
-_SOCKET_CALLBACK_OPTION = 20
+CLIENT_TIMEOUT_SECONDS = 1.0
 
 # @brief TCP 서버 클래스
 class TcpServer:
@@ -39,12 +39,6 @@ class TcpServer:
             server_socket.listen(self.backlog)
             # 5. Non-Blocking 모드로 동작
             server_socket.setblocking(False)
-            # 6. 소켓 옵션 생성
-            server_socket.setsockopt(
-                socket.SOL_SOCKET,
-                _SOCKET_CALLBACK_OPTION,
-                self._accept_client,
-            )
         except Exception:
             server_socket.close()
             raise
@@ -59,22 +53,24 @@ class TcpServer:
         self.socket.close()
         self.socket = None
 
-    def _accept_client(self, server_socket):
+    def process_pending(self):
+        if self.socket is None:
+            return False
+
         client_socket = None
+        try:
+            client_socket, client_address = self.socket.accept()
+        except OSError:
+            return False
 
         try:
-            # 7. 소켓 accept wait
-            client_socket, client_address = server_socket.accept()
-            # 8. accept 완료시 블록킹 모드로 전환
-            client_socket.setblocking(False)
-            # 9. 소켓 옵션 설정
-            client_socket.setsockopt(
-                socket.SOL_SOCKET,
-                _SOCKET_CALLBACK_OPTION,
-                self.request_handler,
-            )
+            client_socket.setblocking(True)
+            client_socket.settimeout(CLIENT_TIMEOUT_SECONDS)
             print("TCP client connected:", client_address)
+            self.request_handler(client_socket)
+            return True
         except Exception as error:
             if client_socket is not None:
                 client_socket.close()
-            print("TCP accept failed:", error)
+            print("TCP client handling failed:", error)
+            return False

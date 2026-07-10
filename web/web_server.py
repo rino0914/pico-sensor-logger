@@ -11,8 +11,14 @@ from web.tcp import TcpServer
 
 HTTP_REASONS = {
     204: "No Content", 400: "Bad Request", 404: "Not Found",
-    405: "Method Not Allowed", 500: "Internal Server Error",
+    405: "Method Not Allowed", 413: "Payload Too Large",
+    500: "Internal Server Error", 501: "Not Implemented",
 }
+
+HTTP_HEADER_END = b"\r\n\r\n"
+HTTP_READ_CHUNK_SIZE = 512
+MAX_HTTP_HEADER_SIZE = 4096
+MAX_HTTP_BODY_SIZE = 4096
 
 
 class HttpError(Exception):
@@ -41,6 +47,9 @@ class WebServer:
     def stop(self):
         self.tcp_server.stop()
 
+    def process_pending(self):
+        return self.tcp_server.process_pending()
+
     def _build_routes(self):
         return {
             "/": {"GET": self._handle_page},
@@ -53,10 +62,9 @@ class WebServer:
 
     def handle_request(self, client_socket):
         try:
-            raw_request = client_socket.read()
+            raw_request = self._read_request(client_socket)
             if not raw_request:
                 return
-            client_socket.setblocking(True)
             method, request_path, query = self._parse_request(raw_request)
             print("HTTP request:", method, request_path)
 
@@ -84,6 +92,70 @@ class WebServer:
             self._try_send_error(client_socket, 500, "Internal Server Error")
         finally:
             client_socket.close()
+
+    @classmethod
+    def _read_request(cls, client_socket):
+        request = bytearray()
+        header_end = -1
+
+        while header_end < 0:
+            chunk = client_socket.recv(HTTP_READ_CHUNK_SIZE)
+            if not chunk:
+                raise HttpError(400, "Incomplete HTTP headers")
+            request.extend(chunk)
+            header_end = request.find(HTTP_HEADER_END)
+            if header_end < 0 and len(request) > MAX_HTTP_HEADER_SIZE:
+                raise HttpError(413, "HTTP headers too large")
+
+        if header_end > MAX_HTTP_HEADER_SIZE:
+            raise HttpError(413, "HTTP headers too large")
+
+        content_length = cls._parse_content_length(bytes(request[:header_end]))
+        if content_length > MAX_HTTP_BODY_SIZE:
+            raise HttpError(413, "HTTP body too large")
+
+        request_end = header_end + len(HTTP_HEADER_END) + content_length
+        while len(request) < request_end:
+            chunk = client_socket.recv(min(
+                HTTP_READ_CHUNK_SIZE,
+                request_end - len(request),
+            ))
+            if not chunk:
+                raise HttpError(400, "Incomplete HTTP body")
+            request.extend(chunk)
+
+        return bytes(request[:request_end])
+
+    @staticmethod
+    def _parse_content_length(header_bytes):
+        content_lengths = []
+        transfer_encoding = None
+
+        for raw_line in header_bytes.split(b"\r\n")[1:]:
+            name, separator, value = raw_line.partition(b":")
+            if not separator:
+                raise HttpError(400, "Malformed HTTP header")
+            name = name.strip().lower()
+            value = value.strip().lower()
+            if name == b"content-length":
+                content_lengths.append(value)
+            elif name == b"transfer-encoding":
+                transfer_encoding = value
+
+        if transfer_encoding is not None:
+            raise HttpError(501, "Transfer-Encoding is not supported")
+        if len(content_lengths) > 1:
+            raise HttpError(400, "Duplicate Content-Length")
+        if not content_lengths:
+            return 0
+
+        try:
+            content_length = int(content_lengths[0])
+        except ValueError:
+            raise HttpError(400, "Invalid Content-Length")
+        if content_length < 0:
+            raise HttpError(400, "Invalid Content-Length")
+        return content_length
 
     def _handle_page(self, client_socket, query):
         self._send_page(client_socket)

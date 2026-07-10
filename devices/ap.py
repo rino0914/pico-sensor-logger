@@ -20,6 +20,9 @@ class AccessPoint:
         if not self.ap.active():
             raise RuntimeError("Failed to start access point")
 
+        if self.network_ifconfig is not None:
+            self.ap.ifconfig(self.network_ifconfig)
+
         if led:
             led.on()
 

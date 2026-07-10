@@ -43,24 +43,26 @@ class SCD40Thread:
     # @brief 준비된 측정값 한 건을 읽어 DataConnector에 전달
     # @return publish한 (CO2, 온도, 습도) 튜플, 미준비 시 None
     def poll_once(self):
-        measurement = self.read_if_ready()
+        measurement = self.sensor.read_if_ready()
         if measurement is None:
             return None
         self._publish_measurement(measurement)
         return measurement
 
     def _publish_measurement(self, measurement):
-        co2, humidity, temperature = measurement
+        co2, temperature, humidity = measurement
         timestamp = self.time_service.now()
         self.connector.publish(timestamp, co2, humidity, temperature)
+        
     def _wait_until_ready(self, interval_ms):
         while self._running:
             if (
                 self.time_service.is_synchronized()
                 and self.connector.is_enabled()
             ):
-                self._running = True
+                return True
             sleep_ms(interval_ms)
+        return False
             
     # @brief 주기 측정을 시작하고 측정값을 계속 DataConnector에 전달
     # @param interval_ms 데이터 준비 상태를 확인하는 간격(ms)
@@ -86,10 +88,9 @@ class SCD40Thread:
         finally:
             if measurement_started:
                 try:
-                    self.stop_periodic_measurement()
+                    self.sensor.stop_periodic_measurement()
                 except OSError as error:
                     print("SCD40 stop failed:", error)
             self.status_led.off()
             self._running = False
             self._started = False
-

@@ -44,15 +44,25 @@ class FakeLed:
 
 
 class FakeSocket:
-    def __init__(self, request):
+    def __init__(self, request, chunk_size=None):
         self.request = request.encode("ascii")
+        self.chunk_size = chunk_size
         self.response = bytearray()
         self.closed = False
 
-    def read(self):
-        return self.request
+    def recv(self, size):
+        if not self.request:
+            return b""
+        if self.chunk_size is not None:
+            size = min(size, self.chunk_size)
+        chunk = self.request[:size]
+        self.request = self.request[size:]
+        return chunk
 
     def setblocking(self, value):
+        pass
+
+    def settimeout(self, value):
         pass
 
     def sendall(self, data):
@@ -88,6 +98,38 @@ class WebServerTest(unittest.TestCase):
         )
         self.assertIn(b"HTTP/1.1 204 No Content", response)
         self.assertTrue(self.time.synchronized)
+
+    def test_accepts_request_split_across_tcp_reads(self):
+        client = FakeSocket(
+            "GET / HTTP/1.1\r\nHost: logger\r\n\r\n",
+            chunk_size=3,
+        )
+        self.server.handle_request(client)
+        self.assertIn(b"HTTP/1.1 200 OK", client.response)
+
+    def test_reads_declared_body_length(self):
+        client = FakeSocket(
+            "POST /sensing_off HTTP/1.1\r\n"
+            "Host: logger\r\nContent-Length: 4\r\n\r\ntest",
+            chunk_size=2,
+        )
+        self.server.handle_request(client)
+        self.assertIn(b"HTTP/1.1 303 See Other", client.response)
+
+    def test_rejects_oversized_headers(self):
+        client = FakeSocket(
+            "GET / HTTP/1.1\r\nX-Large: " + "x" * 4096 + "\r\n\r\n",
+        )
+        self.server.handle_request(client)
+        self.assertIn(b"HTTP/1.1 413 Payload Too Large", client.response)
+
+    def test_rejects_chunked_request_body(self):
+        client = FakeSocket(
+            "POST /sensing_off HTTP/1.1\r\n"
+            "Transfer-Encoding: chunked\r\n\r\n0\r\n\r\n",
+        )
+        self.server.handle_request(client)
+        self.assertIn(b"HTTP/1.1 501 Not Implemented", client.response)
 
     def test_post_action_redirects_and_updates_state(self):
         self.time.synchronized = True

@@ -10,15 +10,23 @@ MAX_WIFI_PASSWORD_LENGTH = 64
 MIN_WIFI_PASSWORD_LENGTH = 8
 
 class AppConfig:
-    def __init__(self, wifi_ssid, wifi_password, logfile_filename, logfile_field_names):
+    def __init__(
+        self,
+        wifi_ssid,
+        wifi_password,
+        wifi_ifconfig,
+        logfile_filename,
+        logfile_field_names,
+    ):
         self.wifi_ssid = wifi_ssid
         self.wifi_password = wifi_password
+        self.wifi_ifconfig = wifi_ifconfig
         self.logfile_filename = logfile_filename
         self.logfile_field_names = logfile_field_names
         
     @property
     def logfile_header(self):
-        return ".".join(self.logfile_field_names)
+        return ",".join(self.logfile_field_names)
     
     @classmethod
     def from_dict(cls, config):
@@ -28,10 +36,13 @@ class AppConfig:
         wifi_network = wifi_values.get("network", "")
         return cls(
             wifi_ssid=cls._normalize_ssid(wifi_values.get("ssid", "")),
-            wifi_password=cls._normalize_password(wifi_values.get("password", "")),
-            wifi_ifconfig=(cls._get_wifi_ifconfig(wifi_network)),
+            wifi_password=cls._normalize_wifi_password(wifi_values.get("password", "")),
+            wifi_ifconfig=cls._normalize_network_ifconfig(wifi_network, "wifi.network"),
             logfile_filename=cls._require_string(logfile_values.get("filename"), "logfile.filename"),
-            logfile_field_names=cls._require_list(logfile_values.get("field_names"), "logfile.field_names", EXPECTED_CSV_FIELD_NAMES)
+            logfile_field_names=cls._normalize_field_names(
+                logfile_values.get("field_names"),
+                "logfile.field_names",
+            ),
         )
     @classmethod
     def load(cls, path="config.json"):
@@ -41,9 +52,6 @@ class AppConfig:
             return cls.from_dict(config)
         except OSError as e:
             print("[ERROR] Failed to open configuration file:", e)
-            raise
-        except json.JSONDecodeError as e:
-            print("[ERROR] Failed to parse JSON configuration:", e)
             raise
         except ValueError as e:
             print("[ERROR] Invalid configuration data:", e)
@@ -73,7 +81,7 @@ class AppConfig:
             raise ValueError(f"{name} must only contain the following items: {expected_items}")
         return value
     
-    @staticmethod
+    @classmethod
     def _normalize_network_ifconfig(cls, network_config, path):
         values = cls._require_mapping(network_config, path)
         return (
@@ -82,17 +90,18 @@ class AppConfig:
             cls._normalize_ip_address(values.get("gateway"), f"{path}.gateway"),
             cls._normalize_ip_address(values.get("dns"), f"{path}.dns")
         )
-    def _normalize_field_names(cls,fiedl_names, path):
-        if not isinstance(fiedl_names, list):
+    @classmethod
+    def _normalize_field_names(cls, field_names, path):
+        if not isinstance(field_names, list):
             raise ValueError(f"{path} must be a list")
-        normalized_field_names = []
-        for index, field_name in enumerate(fiedl_names):
+        for index, field_name in enumerate(field_names):
             cls._require_string(field_name, f"{path}[{index}]")
-            
-            normalized = tuple(normalized)
-            if normalized != EXPECTED_CSV_FIELD_NAMES:
-                raise ValueError(f"{path} must contain the following items in order: {EXPECTED_CSV_FIELD_NAMES}")
-            return normalized
+        if field_names != EXPECTED_CSV_FIELD_NAMES:
+            raise ValueError(
+                f"{path} must contain the following items in order: "
+                f"{EXPECTED_CSV_FIELD_NAMES}"
+            )
+        return tuple(field_names)
 
     @classmethod
     def _normalize_ip_address(cls, value, path):
@@ -102,6 +111,7 @@ class AppConfig:
             raise ValueError(f"{path} must be a valid IPv4 address")
         return value
     
+    @classmethod
     def _normalize_netmask(cls, value, path):
         cls._require_string(value, path)
         parts = value.split(".")

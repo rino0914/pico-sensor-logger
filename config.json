@@ -5,13 +5,13 @@
     "network": {
       "ip": "192.168.4.1",
       "netmask": "255.255.255.0",
-      "gateway": "192.168.45.1",
+      "gateway": "192.168.4.1",
       "dns": "8.8.8.8"
     }
   },
 
   "logfile": {
     "filename": "data-SCD40-1.csv",
-    "field_names": ["time", "CO2(ppm)", "temerture(C)","humidity(%)" ]
+    "field_names": ["timestamp", "CO2(ppm)", "temperature(°C)", "humidity(%)"]
   }
 }

@@ -43,7 +43,7 @@ class SCD40Error(Exception):
     pass
 
 # @brief SCD40 응답 CRC 불일치 예외
-class SCD40CrcError(Exception):
+class SCD40CrcError(SCD40Error):
     pass
 
 # @brief SCD40 주기 측정, 상태 확인, 측정값 변환 API
@@ -51,7 +51,7 @@ class SCD40Device:
     # @brief SCD40 드라이버와 송수신 버퍼 초기화
     # @param i2c machine.I2C 호환 객체
     # @return 없음
-    def __init__(self, i2c, connector, time_service):
+    def __init__(self, i2c):
         self.i2c = i2c
         self.address = SCD40_ADDRESS
 

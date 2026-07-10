@@ -1,5 +1,4 @@
 import _thread
-from core.timestamp import Timestamp
 
 class FileHandler:
     """하나의 파일에 대한 실제 입출력을 직렬화한다."""
@@ -16,12 +15,14 @@ class FileHandler:
     def ensure_header(self, header):
         self._lock.acquire()
         try:
-            is_empty = True
-            with open(self.file_path, "r") as file:
-                is_empty = not bool(file.read(1))
+            try:
+                with open(self.file_path, "r") as file:
+                    is_empty = not bool(file.read(1))
+            except OSError:
+                is_empty = True
             if is_empty:
-               with open(self.file_path, "w") as file:
-                   file.write(header + "\n")       
+                with open(self.file_path, "w") as file:
+                    file.write(header + "\n")
         finally:
             self._lock.release()
 
@@ -50,7 +51,8 @@ class FileHandler:
     def read(self):
         self._lock.acquire()
         try:
-            return self._read()
+            with open(self.file_path, "r") as file:
+                return file.read()
         finally:
             self._lock.release()
 
@@ -119,6 +121,22 @@ class CsvWriter:
             return True
         finally:
             self._lock.release()
+
+    @staticmethod
+    def _format_timestamp(timestamp):
+        try:
+            year, month, day = timestamp[0], timestamp[1], timestamp[2]
+            hour, minute, second = timestamp[4], timestamp[5], timestamp[6]
+        except (IndexError, TypeError):
+            raise ValueError("Invalid RTC timestamp")
+        return "%04d-%02d-%02d %02d:%02d:%02d" % (
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+        )
 
     def flush(self):
         while self.process_one():

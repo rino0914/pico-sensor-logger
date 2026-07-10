@@ -2,17 +2,19 @@ import rp2
 from time import sleep
 from machine import I2C, Pin
 
-from config_loader import loading
+from config_loader import AppConfig
 from core.data_connector import DataConnector
 from core.time_service import TimeService
-from devices import scd40
-from devices import scd40
-from device.ap import CsvWriter, FileHandler
+from devices import scd40, scd40_thread
+from devices.ap import AccessPoint
+from storage.filemanager import CsvWriter, FileHandler
 from web.web_server import WebServer
 
 APP_NAME = "PTL-LOGGER"
 CONFIG_FILE = "config.json"
 MAIN_LOOP_INTERVAL_SECONDS = 0.05
+SENSOR_STOP_WAIT_INTERVAL_SECONDS = 0.05
+SENSOR_STOP_TIMEOUT_SECONDS = 3.0
 
 def create_status_led():
     status_led = Pin("LED", Pin.OUT)
@@ -42,7 +44,7 @@ def create_sensor(connector, time_service):
 class PicoSenscorLoggerApp:
     def __init__(self, config_path=CONFIG_FILE):
         self.config_path = config_path
-        self.config = load_config(config_path)
+        self.config = AppConfig.load(config_path)
         self.status_led = create_status_led()
         
         self.connector = DataConnector()
@@ -76,13 +78,25 @@ class PicoSenscorLoggerApp:
         err = self._run_stop_step("access point", lambda: self.ap.stop(self.status_led), err)
         if err:
             print("[ERROR] Failed to stop some components:", err)
+
+    def _await_sensor_stop(self):
+        max_checks = int(
+            SENSOR_STOP_TIMEOUT_SECONDS
+            / SENSOR_STOP_WAIT_INTERVAL_SECONDS
+        )
+        for _ in range(max_checks):
+            if not self.sensor.is_running():
+                return
+            sleep(SENSOR_STOP_WAIT_INTERVAL_SECONDS)
+        if self.sensor.is_running():
+            raise RuntimeError("Timed out waiting for sensor thread to stop")
     
     def _run_stop_step(self, step_name, callback, prev_err):
         try:
             callback()
         except Exception as e:
             print(f"[ERROR] Failed to stop {step_name}:", e,
-                  f" (previous error: {prev_err})" if prev_err is None else "")
+                  f" (previous error: {prev_err})" if prev_err is not None else "")
             return e
         return prev_err
     
@@ -98,6 +112,7 @@ class PicoSenscorLoggerApp:
             print("[INFO] Succeed to start application.")
             while True:
                 try:
+                    self.web_server.process_pending()
                     self._process_storage()
 
                     if rp2.bootsel_button():
@@ -111,7 +126,7 @@ class PicoSenscorLoggerApp:
                     error = e
                     raise
         finally:
-            self.stop_preserving_run_error(run_error=error)
+            self._stop_preserving_run_error(run_error=error)
             print("[ALERT] %s Stopped." % APP_NAME)
             
     def _stop_preserving_run_error(self, run_error):
