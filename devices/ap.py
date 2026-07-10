@@ -2,11 +2,11 @@ import network
 
 WIFI_POWER_SAVE_DISABLED = 0xA11140
 
-
 class AccessPoint:
-    def __init__(self, ssid, password):
+    def __init__(self, ssid, password, network_ifconfig=None):
         self.ssid = ssid
         self.password = password
+        self.network_ifconfig = network_ifconfig
         self.ap = network.WLAN(network.AP_IF)
         self.ap.config(
             ssid     = self.ssid,

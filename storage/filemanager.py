@@ -1,16 +1,5 @@
 import _thread
-
-
-def _locked(method):
-    def wrapper(self, *args, **kwargs):
-        self._lock.acquire()
-        try:
-            return method(self, *args, **kwargs)
-        finally:
-            self._lock.release()
-
-    return wrapper
-
+from core.timestamp import Timestamp
 
 class FileHandler:
     """하나의 파일에 대한 실제 입출력을 직렬화한다."""
@@ -23,6 +12,18 @@ class FileHandler:
     @property
     def get_fname(self):
         return self.file_path.split("/")[-1]
+
+    def ensure_header(self, header):
+        self._lock.acquire()
+        try:
+            is_empty = True
+            with open(self.file_path, "r") as file:
+                is_empty = not bool(file.read(1))
+            if is_empty:
+               with open(self.file_path, "w") as file:
+                   file.write(header + "\n")       
+        finally:
+            self._lock.release()
 
     @property
     def get_dir(self):
@@ -38,44 +39,45 @@ class FileHandler:
             return "." + name.split(".")[-1]
         return ""
 
-    @_locked
-    def ensure_header(self, header):
-        is_empty = True
+    def reset(self, header):
+        self._lock.acquire()
         try:
-            with open(self.file_path, "r") as file:
-                is_empty = not bool(file.read(1))
-        except OSError:
-            pass
-
-        if is_empty:
             with open(self.file_path, "w") as file:
                 file.write(header + "\n")
+        finally:
+            self._lock.release()
 
-    @_locked
-    def reset(self, header):
-        with open(self.file_path, "w") as file:
-            file.write(header + "\n")
-
-    @_locked
     def read(self):
-        with open(self.file_path, "r") as file:
-            return file.read()
+        self._lock.acquire()
+        try:
+            return self._read()
+        finally:
+            self._lock.release()
 
-    @_locked
     def write(self, content):
-        with open(self.file_path, "w") as file:
-            file.write(content)
+        self._lock.acquire()
+        try:
+            with open(self.file_path, "w") as file:
+                file.write(content)
+        finally:
+            self._lock.release()
 
-    @_locked
     def write_line(self, line):
-        with open(self.file_path, "a") as file:
-            file.write(line + "\n")
+        self._lock.acquire()
+        try:
+            with open(self.file_path, "a") as file:
+                file.write(line + "\n")
+        finally:
+            self._lock.release()
 
-    @_locked
     def send_to(self, client_socket):
-        with open(self.file_path, "r") as file:
-            for line in file:
-                client_socket.sendall(line)
+        self._lock.acquire()
+        try:
+            with open(self.file_path, "r") as file:
+                for line in file:
+                    client_socket.sendall(line.encode(self.encoding))
+        finally:
+            self._lock.release()
 
 
 class CsvWriter:
@@ -142,14 +144,3 @@ class CsvWriter:
 
     def send_to(self, client_socket):
         self.file_handler.send_to(client_socket)
-
-    @staticmethod
-    def _format_timestamp(timestamp):
-        return "%04d-%02d-%02d %02d:%02d:%02d" % (
-            timestamp[0],
-            timestamp[1],
-            timestamp[2],
-            timestamp[4],
-            timestamp[5],
-            timestamp[6],
-        )

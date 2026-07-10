@@ -1,73 +1,23 @@
 import _thread
 from time import sleep_ms
 from machine import Pin
-from micropython import const as _const
+from devices.scd40 import SCD40Error
 
-# 데이터 준비 상태 확인용 하위 11비트 마스크
-READY_MASK = 0x07FF
-
-# Sensirion CRC-8 설정값
-CRC8_INIT = 0xFF
-CRC8_POLYNOMIAL = 0x31
-
-# 원시 온도·습도 값 변환 계수
-TEMPERTURE_OFFSET_C = -45.0
-TEMPERTURE_SCALE  = 175.0 / 65536.0
-HUMIDITY_SCALE    = 100.0 / 65536.0
-
-# SCD40 I2C 주소와 명령 코드
-SCD40_ADDRESS                    = _const(0x62)
-SCD40_DATA_READY                 = _const(0xE4B8)
-SCD40_STOP_PERIODIC_MEASUREMENT  = _const(0x3F86)
-SCD40_START_PERIODIC_MEASUREMENT = _const(0x21B1)
-SCD40_READ_MEASUREMENT           = _const(0xEC05)    
-
-# 명령별 송수신 버퍼 크기
-SCD40_MEASUREMENT_BUFFER_SIZE = 9
-SCD40_STATUS_BUFFER_SIZE      = 3
-SCD40_COMMAND_BUFFER_SIZE     = 2
-
-# Pico I2C 버스와 핀 설정
-I2C_BUS_ID    = 0
-I2C_FREQUENCY = 100_000
-
-SCD40_SCL_PIN = 9
-SCD40_SDA_PIN = 8
-
-# 명령 처리 대기시간과 상태 LED 핀
-SCD40_COMMAND_DELAY_MS = 1
-SCD40_STOP_DELAY_MS    = 500
 SCD40_POLL_INTERVAL_MS = 500
-SENSOR_STATUS_LED_PIN  = 1
+SENSOR_STATUS_LED_PIN = 1
 
-# @brief SCD40 통신·응답 오류 기본 예외
-class SCD40Error(Exception):
-    pass
-
-# @brief SCD40 응답 CRC 불일치 예외
-class SCD40CrcError(Exception):
-    pass
-
-# @brief SCD40 주기 측정, 상태 확인, 측정값 변환 API
 class SCD40Thread:
     # @brief SCD40 드라이버와 송수신 버퍼 초기화
     # @param i2c machine.I2C 호환 객체
     # @return 없음
-    def __init__(self, i2c, connector, time_service):
-        self.i2c = i2c
-        self.address = SCD40_ADDRESS
-
-        # 센서값을 읽기위한 임시버퍼
-        self._command_buffer     = bytearray(SCD40_COMMAND_BUFFER_SIZE)
-        self._status_buffer      = bytearray(SCD40_STATUS_BUFFER_SIZE)
-        self._measurement_buffer = bytearray(SCD40_MEASUREMENT_BUFFER_SIZE)
+    def __init__(self, sensor, connector, time_service, status_led=None):
+        self.sensor = sensor
+        self.connector = connector # 수신 데이터를 저장관리하는 데이터 커넥터
+        self.time_service = time_service # 시간 동기화 스레드
+        self.status_led = status_led or Pin(SENSOR_STATUS_LED_PIN, Pin.OUT)
+        self._started = False
+        self._running = False
         
-        self.connector           = connector # 수신 데이터를 저장관리하는 데이터 커넥터
-        self.time_service        = time_service # 시간 동기화 스레드
-        self.status_led          = Pin(SENSOR_STATUS_LED_PIN, Pin.OUT)
-        self._started            = False
-        self._running            = False
-
     # @brief 센서 측정 루프를 새 스레드에서 시작
     # @return 생성된 스레드 식별자
     def start(self):
@@ -85,47 +35,10 @@ class SCD40Thread:
 
     # @brief 센서 측정 스레드에 종료 요청
     def stop(self):
-        self.connector.stop_sensing()
         self._running = False
 
     def is_running(self):
         return self._started
-
-    # @brief 주기 측정 시작 명령 전송
-    # @return 없음
-    def start_periodic_measurement(self):
-        self._write_command(SCD40_START_PERIODIC_MEASUREMENT)
-
-    # @brief 주기 측정 중지 명령 전송
-    # @return 없음
-    def stop_periodic_measurement(self):
-        self._write_command(SCD40_STOP_PERIODIC_MEASUREMENT)
-
-    # @brief 주기 측정 중지 후 재시작
-    # @return 없음
-    def restart_periodic_measurement(self):
-        self.stop_periodic_measurement()
-        sleep_ms(SCD40_STOP_DELAY_MS)
-        self.start_periodic_measurement()
-
-    # @brief 새 측정값 준비 상태 확인
-    # @return 준비 완료 시 True, 미완료 시 False
-    def is_data_ready(self):
-        status_word = self._read_word_response(SCD40_DATA_READY, self._status_buffer, SCD40_COMMAND_DELAY_MS)
-        return (status_word & READY_MASK) != 0
-
-    # @brief CO2, 온도, 습도 측정값 읽기
-    # @return (CO2, 온도, 습도) 튜플
-    def read_measurement(self):
-        response = self._read_response(SCD40_READ_MEASUREMENT, self._measurement_buffer, SCD40_COMMAND_DELAY_MS)
-        return self._parse_measurement(response)
-
-    # @brief 준비 완료 시 측정값 읽기
-    # @return (CO2, 온도, 습도) 튜플, 미준비 시 None
-    def read_if_ready(self):
-        if not self.is_data_ready():
-            return None
-        return self.read_measurement()
 
     # @brief 준비된 측정값 한 건을 읽어 DataConnector에 전달
     # @return publish한 (CO2, 온도, 습도) 튜플, 미준비 시 None
@@ -133,33 +46,32 @@ class SCD40Thread:
         measurement = self.read_if_ready()
         if measurement is None:
             return None
-
-        co2, temperature, humidity = measurement
-        timestamp = self.time_service.now()
-        self.connector.publish(
-            timestamp,
-            co2,
-            humidity,
-            temperature,
-        )
+        self._publish_measurement(measurement)
         return measurement
 
+    def _publish_measurement(self, measurement):
+        co2, humidity, temperature = measurement
+        timestamp = self.time_service.now()
+        self.connector.publish(timestamp, co2, humidity, temperature)
+    def _wait_until_ready(self, interval_ms):
+        while self._running:
+            if (
+                self.time_service.is_synchronized()
+                and self.connector.is_enabled()
+            ):
+                self._running = True
+            sleep_ms(interval_ms)
+            
     # @brief 주기 측정을 시작하고 측정값을 계속 DataConnector에 전달
     # @param interval_ms 데이터 준비 상태를 확인하는 간격(ms)
     # @return 없음: stop() 요청 전까지 반복
     def run(self, interval_ms=SCD40_POLL_INTERVAL_MS):
         measurement_started = False
         try:
-            while self._running and not (
-                self.time_service.is_synchronized()
-                and self.connector.is_enabled()
-            ):
-                sleep_ms(interval_ms)
-
-            if not self._running:
+            if not self._wait_until_ready(interval_ms):
                 return
 
-            self.restart_periodic_measurement()
+            self.sensor.restart_periodic_measurement()
             measurement_started = True
             self.status_led.on()
 
@@ -167,7 +79,7 @@ class SCD40Thread:
                 if self.connector.is_enabled():
                     try:
                         self.poll_once()
-                    except (OSError, RuntimeError, SCD40CrcError) as error:
+                    except (OSError, RuntimeError, SCD40Error) as error:
                         print("SCD40 measurement failed:", error)
 
                 sleep_ms(interval_ms)
@@ -181,85 +93,3 @@ class SCD40Thread:
             self._running = False
             self._started = False
 
-    # @brief 16비트 명령의 상위·하위 바이트 전송
-    # @param command SCD40 16비트 명령 코드
-    # @return 없음
-    def _write_command(self, command):
-        buffer = self._command_buffer
-        buffer[0] = (command >> 8 & 0xFF)
-        buffer[1] = command & 0xFF
-        self.i2c.writeto(self.address, buffer)
-
-    # @brief 명령 전송 후 응답 수신과 CRC 검증
-    # @param command SCD40 16비트 명령 코드
-    # @param buffer 응답 저장용 bytearray
-    # @param delay_ms 명령 처리 대기시간(ms)
-    # @return 수신 응답 버퍼
-    def _read_response(self, command, buffer, delay_ms):
-        self._write_command(command)
-        sleep_ms(delay_ms)
-        self.i2c.readfrom_into(self.address, buffer)
-        self._validate_crc(buffer)
-        return buffer
-
-    # @brief 단일 16비트 응답 실행과 값 디코딩
-    # @param command SCD40 16비트 명령 코드
-    # @param buffer 3바이트 응답 저장용 bytearray
-    # @param delay_ms 명령 처리 대기시간(ms)
-    # @return 디코딩된 16비트 정수
-    def _read_word_response(self, command, buffer, delay_ms):
-        response = self._read_response(command, buffer, delay_ms)
-        return self._decode_word(response, 0)
-
-    # @brief 9바이트 측정 응답의 CO2·온도·습도 변환
-    # @param buffer CRC 검증 완료 측정 응답
-    # @return (CO2 ppm, 온도 °C, 상대습도 %) 튜플
-    def _parse_measurement(self, buffer):
-        co2 = self._decode_word(buffer, 0)
-        raw_temperture = self._decode_word(buffer, 3)
-        raw_humidity   = self._decode_word(buffer, 6)
-
-        temperature = (TEMPERTURE_OFFSET_C + raw_temperture * TEMPERTURE_SCALE)
-        humidity    = raw_humidity * HUMIDITY_SCALE
-        return co2, temperature, humidity
-
-    # @brief 3바이트 단위 응답의 CRC-8 검증
-    # @param buffer 데이터 2바이트와 CRC 1바이트 단위 응답
-    # @return 없음
-    # @raise SCD40CrcError CRC 불일치
-    @classmethod
-    def _validate_crc(cls, buffer):
-        for offset in range(0, len(buffer), 3):
-            data_msb     = buffer[offset]
-            data_lsb     = buffer[offset + 1]
-            expected_crc = buffer[offset + 2]
-            actual_crc   = cls._crc8(data_msb,data_lsb)
-
-            if actual_crc != expected_crc:
-                raise SCD40CrcError("SCD40 CRC check failed")
-
-    # @brief 데이터 2바이트의 Sensirion CRC-8 계산
-    # @param first_byte 첫 번째 데이터 바이트
-    # @param second_byte 두 번째 데이터 바이트
-    # @return 8비트 CRC 값
-    @staticmethod
-    def _crc8(first_byte, second_byte):
-        crc = CRC8_INIT
-
-        for byte in (first_byte, second_byte):
-            crc ^= byte
-            for _ in range(8):
-                if crc & 0x80:
-                    crc = ((crc << 1) ^ CRC8_POLYNOMIAL ) & 0xFF
-                else:
-                    crc = (crc << 1) & 0xFF
-
-        return crc
-
-    # @brief 빅엔디언 16비트 값 디코딩
-    # @param buffer 응답 바이트 버퍼
-    # @param offset 상위 바이트 시작 위치
-    # @return 디코딩된 16비트 정수
-    @staticmethod
-    def _decode_word(buffer, offset):
-        return (buffer[offset] << 8) | buffer[offset + 1]

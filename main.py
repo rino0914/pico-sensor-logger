@@ -2,152 +2,134 @@ import rp2
 from time import sleep
 from machine import I2C, Pin
 
-from config_loader import get_config_value, load_config
+from config_loader import loading
 from core.data_connector import DataConnector
 from core.time_service import TimeService
-from devices import scd40_thread
-from devices.ap import AccessPoint
-from storage.filemanager import CsvWriter, FileHandler
+from devices import scd40
+from devices import scd40
+from device.ap import CsvWriter, FileHandler
 from web.web_server import WebServer
 
 APP_NAME = "PTL-LOGGER"
 CONFIG_FILE = "config.json"
 MAIN_LOOP_INTERVAL_SECONDS = 0.05
 
-# @brief LED 초기화 및 꺼짐 상태 유지
-# @return LED 상태
 def create_status_led():
     status_led = Pin("LED", Pin.OUT)
     status_led.off()
     return status_led
 
-# @brief CSV파일 관리 객체 생성 및 반환
-# @param config 설정
-# @param connector 커넥터
-# @return CSVWriter 객체
-def create_storage(config, connector):
-    csv_path     = get_config_value(config, "logfile", "filename")
-    field_names  = get_config_value(config, "logfile", "field_names")
-    file_handler = FileHandler(csv_path)
-    return CsvWriter(
-        connector,
-        file_handler,
-        ", ".join(field_names),
-    )
+def create_csv_writer(config, connector):
+    file_handler = FileHandler(config.logfile_filename)
+    return CsvWriter(connector, file_handler, config.logfile_header)
 
-# @brief SCD40 센서 기록 스레드 생성 및 반환
-# @param connector 커넥터
-# @param time_service 시간 동기화 객체
-# @return cd40_thread.SCD40Thread
 def create_sensor(connector, time_service):
     i2c = I2C(
-        scd40_thread.I2C_BUS_ID,
-        scl  = Pin(scd40_thread.SCD40_SCL_PIN),
-        sda  = Pin(scd40_thread.SCD40_SDA_PIN),
-        freq = scd40_thread.I2C_FREQUENCY,
+        scd40.I2C_BUS_ID,
+        scl  = Pin(scd40.SCD40_SCL_PIN),
+        sda  = Pin(scd40.SCD40_SDA_PIN),
+        freq = scd40.I2C_FREQUENCY,
     )
     print("i2c_0 scan result:", i2c.scan())
 
     return scd40_thread.SCD40Thread(
-        i2c,
+        scd40.SCD40Device(i2c),
         connector,
-        time_service,
+        time_service
     )
 
-# @brief 애플리케이션 생성 및 반환
-# @param config 설정
-# @param status_led LED 상태
-# @return ap, web_server, sensor, csv_writer
-def create_application(config, status_led):
-    #1.데이터 커넥터 생성(센서스레드 - 웹 서버 간 데이터 consume/produce)
-    connector = DataConnector()
-    #2.시간 동기화 생성
-    time_service = TimeService()
-    #3. csv writer 생성 및 커넥터 추가
-    csv_writer = create_storage(config, connector)
-    #4. AP 생성
-    ap = AccessPoint(
-        get_config_value(config, "wifi", "ssid"),
-        get_config_value(config, "wifi", "password"),
-    )
-    #5. 웹 서버 생성
-    web_server = WebServer(
-        connector=connector,
-        time_service=time_service,
-        csv_writer=csv_writer,
-        led=status_led,
-    )
-    #6. scd40 센서 수집기 생성
-    sensor = create_sensor(connector, time_service)
 
-    return ap, web_server, sensor, csv_writer
+class PicoSenscorLoggerApp:
+    def __init__(self, config_path=CONFIG_FILE):
+        self.config_path = config_path
+        self.config = load_config(config_path)
+        self.status_led = create_status_led()
+        
+        self.connector = DataConnector()
+        self.time_service = TimeService()
+        self.csv_writer = create_csv_writer(self.config, self.connector)
+        self.ap = AccessPoint(
+            self.config.wifi_ssid,
+            self.config.wifi_password,
+            self.config.wifi_ifconfig,
+            )
+        self.web_server = WebServer(
+            connector=self.connector,
+            time_service=self.time_service,
+            csv_writer=self.csv_writer,
+            led=self.status_led,
+        )
+        self.sensor = create_sensor(self.connector, self.time_service)
+    
+    def start(self):
+        self.ap.start(self.status_led)
+        self.web_server.start()
+        self.sensor.start()
+        
+    def stop(self):
+        err = None
+        err = self._run_stop_step("web_server", self.web_server.stop, err)
+        err = self._run_stop_step("sensor thread", self.sensor.stop, err)
+        err = self._run_stop_step("sensor shutdown await", self._await_sensor_stop, err)
+        err = self._run_stop_step("sensing state", self.connector.stop_sensing, err)
+        err = self._run_stop_step("csv writer flush", self.csv_writer.flush, err)
+        err = self._run_stop_step("access point", lambda: self.ap.stop(self.status_led), err)
+        if err:
+            print("[ERROR] Failed to stop some components:", err)
+    
+    def _run_stop_step(self, step_name, callback, prev_err):
+        try:
+            callback()
+        except Exception as e:
+            print(f"[ERROR] Failed to stop {step_name}:", e,
+                  f" (previous error: {prev_err})" if prev_err is None else "")
+            return e
+        return prev_err
+    
+    def run(self):
+        error = None
+        print("[ALERT] %s Started." % APP_NAME)
+        print("[INFO] Succeed to load configuration:", self.config_path)
+        print("[INFO] Succeed to initialize LED status.")
+        print("[INFO] Succeed to create application.")
+        
+        try:
+            self.start()
+            print("[INFO] Succeed to start application.")
+            while True:
+                try:
+                    self._process_storage()
 
-# @brief 애플리케이션 시작
-# @param ap AP
-# @param web_server 웹서버
-# @param sensor SDC40 센서
-# @param status_led LED 상태
-def start_application(ap, web_server, sensor, status_led):
-    #1. AP 구동
-    ap.start(status_led)
-    #2. 웹서버 구동
-    web_server.start()
-    #3. 센서 수집기 구동
-    sensor.start()
-
-# @brief 애플리케이션 중지
-# @param ap AP
-# @param web_server 웹서버
-# @param sensor SDC40 센서
-# @param status_led LED 상태
-def stop_application(ap, web_server, sensor, csv_writer, status_led):
-    web_server.stop()
-    sensor.stop()
-
-    while sensor.is_running():
-        sleep(MAIN_LOOP_INTERVAL_SECONDS)
-
-    csv_writer.flush()
-    ap.stop(status_led)
-
+                    if rp2.bootsel_button():
+                        print("[ALERT] BOOTSEL button detected!")
+                        break
+                    sleep(MAIN_LOOP_INTERVAL_SECONDS)
+                except OSError as e:
+                    print("[WARN] Failed to write CSV.", e)
+                except Exception as e:
+                    print("[ERROR] Unexpected error during main loop:", e)
+                    error = e
+                    raise
+        finally:
+            self.stop_preserving_run_error(run_error=error)
+            print("[ALERT] %s Stopped." % APP_NAME)
+            
+    def _stop_preserving_run_error(self, run_error):
+        try:
+            self.stop()
+        except Exception as stop_error:
+            print("[ERROR] Failed to stop application:", stop_error,
+                  f" (original run error: {run_error})" if run_error else "")
+            if not run_error:
+                raise stop_error
+            else:
+                raise run_error
+    def _process_storage(self):
+        try:
+            self.csv_writer.process_one()
+        except OSError as e:
+            print("[WARN] Failed to write CSV.", e)
 
 if __name__ == "__main__":
-    print("[ALERT] %s Started.")
-    # 1.설정파일 로드
-    config = load_config(CONFIG_FILE)
-    print("[INFO] Succeed to load configurtaion."+ config)
-    # 2.LED 초기화
-    status_led = create_status_led()
-    print("[INFO] Succeed to initailaize LED statue.")
-    # 3. 애플리케이션 초기화
-    (
-        ap,
-        web_server,
-        sensor,
-        csv_writer,
-    ) = create_application(config, status_led)
-    print("[INFO] Succeed to create application.")
-    # 4. 애플리케이션 구동
-    start_application(ap, web_server, sensor, status_led)
-    print("[INFO] Succeed to start application.")
-    # 버튼 푸시 감지 전 까지 무한 루프
-    while True:
-        try:
-            #CSV 파일 write
-            csv_writer.process_one()
-        except OSError as error:
-            print("[WARN] Failed to write CSV.", error)
-
-        if rp2.bootsel_button():
-            print("[ALERT] BOOTSEL button detected!", error)
-            stop_application(
-                ap,
-                web_server,
-                sensor,
-                csv_writer,
-                status_led,
-            )
-            break
-        sleep(MAIN_LOOP_INTERVAL_SECONDS)
-
-    print("[ALERT] %s Stopped.")
+    app = PicoSenscorLoggerApp()
+    app.run()

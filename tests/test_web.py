@@ -1,0 +1,110 @@
+import unittest
+
+from core.data_connector import DataConnector
+from web.web_server import WebServer
+
+
+class FakeTimeService:
+    def __init__(self):
+        self.synchronized = False
+
+    def synchronize(self, *values):
+        self.values = values
+        self.synchronized = True
+
+    def is_synchronized(self):
+        return self.synchronized
+
+
+class FakeCsvWriter:
+    file_name = "measurements.csv"
+
+    def __init__(self):
+        self.reset_called = False
+
+    def pending_count(self):
+        return 0
+
+    def flush(self):
+        pass
+
+    def reset(self):
+        self.reset_called = True
+
+    def send_to(self, client_socket):
+        client_socket.sendall(b"timestamp,co2\n")
+
+
+class FakeLed:
+    def on(self):
+        self.enabled = True
+
+    def off(self):
+        self.enabled = False
+
+
+class FakeSocket:
+    def __init__(self, request):
+        self.request = request.encode("ascii")
+        self.response = bytearray()
+        self.closed = False
+
+    def read(self):
+        return self.request
+
+    def setblocking(self, value):
+        pass
+
+    def sendall(self, data):
+        self.response.extend(data)
+
+    def close(self):
+        self.closed = True
+
+
+class WebServerTest(unittest.TestCase):
+    def setUp(self):
+        self.connector = DataConnector()
+        self.time = FakeTimeService()
+        self.csv = FakeCsvWriter()
+        self.server = WebServer(self.connector, self.time, self.csv, FakeLed(), port=8080)
+
+    def request(self, method, target):
+        client = FakeSocket("%s %s HTTP/1.1\r\nHost: logger\r\n\r\n" % (method, target))
+        self.server.handle_request(client)
+        return bytes(client.response)
+
+    def test_dashboard_contains_controls_and_charts(self):
+        response = self.request("GET", "/")
+        self.assertIn(b"HTTP/1.1 200 OK", response)
+        self.assertIn("CO₂".encode("utf-8"), response)
+        self.assertIn(b"/sensing_on", response)
+        self.assertIn(b"measurements.csv", response)
+
+    def test_time_sync_accepts_declared_query(self):
+        response = self.request(
+            "POST",
+            "/set_time?year=2026&month=7&day=11&weekday=6&hour=12&minute=30&second=0",
+        )
+        self.assertIn(b"HTTP/1.1 204 No Content", response)
+        self.assertTrue(self.time.synchronized)
+
+    def test_post_action_redirects_and_updates_state(self):
+        self.time.synchronized = True
+        response = self.request("POST", "/sensing_on")
+        self.assertIn(b"HTTP/1.1 303 See Other", response)
+        self.assertTrue(self.connector.is_enabled())
+
+    def test_rejects_wrong_method(self):
+        response = self.request("GET", "/delete_csv")
+        self.assertIn(b"HTTP/1.1 405 Method Not Allowed", response)
+        self.assertIn(b"Allow: POST", response)
+
+    def test_csv_download(self):
+        response = self.request("GET", "/measurements.csv")
+        self.assertIn(b"Content-Type: text/csv", response)
+        self.assertTrue(response.endswith(b"timestamp,co2\n"))
+
+
+if __name__ == "__main__":
+    unittest.main()
