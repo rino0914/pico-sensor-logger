@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="10">
+<title>PTL Logger</title><style>
+:root{color-scheme:dark;--bg:#0b1020;--card:#151d32;--line:#29344e;--muted:#94a3bd;--text:#edf2ff;--blue:#4f7cff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px system-ui,sans-serif}
+main{max-width:1100px;margin:auto;padding:24px}header,.actions,.meta{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+header{justify-content:space-between;margin-bottom:18px}h1{font-size:24px;margin:0}.badge{padding:7px 11px;border-radius:99px;background:#39435b}
+.badge.running{background:#126349}.badge.stopped{background:#5a3340}.notice{padding:13px 16px;background:#1d2944;border-left:4px solid var(--blue);border-radius:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:14px;margin:16px 0}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;overflow:hidden}
+.card h2{font-size:16px;margin:0}.value{font-size:29px;font-weight:700;margin:5px 0}.unit{font-size:14px;color:var(--muted)}svg{width:100%;height:auto}.axis{stroke:#3b4763;stroke-width:1}.label{fill:#94a3bd;font-size:11px}.trace{fill:none;stroke-width:3;stroke-linejoin:round;stroke-linecap:round}
+button,.button{border:0;border-radius:8px;padding:10px 13px;background:var(--blue);color:white;font-weight:650;text-decoration:none;cursor:pointer}.secondary{background:#34405b}.danger{background:#a63d4a}
+.meta{color:var(--muted);margin-top:14px;font-size:13px}.meta span{margin-right:10px}@media(max-width:500px){main{padding:15px}.actions>*{flex:1;text-align:center}}
+</style></head><body><main>
+<header><h1>PTL Sensor Logger</h1><span class="badge running">측정 중</span></header>
+<div class="notice">측정 중 · 미리보기 데이터</div><section class="grid"><article class="card"><h2>CO₂</h2><div class="value">589.5 <span class="unit">ppm</span></div>
+<svg viewBox="0 0 460 310" role="img" aria-label="CO₂ 그래프">
+<line class="axis" x1="70" y1="10" x2="70" y2="290"/><line class="axis" x1="70" y1="290" x2="450" y2="290"/>
+<text class="label" x="4" y="18">720.0</text><text class="label" x="4" y="153">620.0</text><text class="label" x="4" y="290">520.0</text>
+<path class="trace" stroke="#4f7cff" d="M 70 150 L 72 138 L 74 126 L 76 114 L 78 103 L 80 93 L 81 83 L 83 75 L 85 68 L 87 62 L 89 57 L 91 54 L 93 52 L 95 52 L 97 54 L 98 57 L 100 61 L 102 67 L 104 74 L 106 82 L 108 91 L 110 102 L 112 113 L 114 124 L 116 136 L 118 148 L 119 161 L 121 173 L 123 184 L 125 196 L 127 206 L 129 216 L 131 224 L 133 232 L 135 238 L 136 242 L 138 246 L 140 248 L 142 248 L 144 247 L 146 244 L 148 240 L 150 234 L 152 227 L 154 219 L 156 210 L 157 200 L 159 189 L 161 177 L 163 165 L 165 153 L 167 141 L 169 129 L 171 117 L 173 106 L 174 95 L 176 86 L 178 77 L 180 69 L 182 63 L 184 58 L 186 55 L 188 53 L 190 52 L 192 53 L 194 56 L 195 60 L 197 65 L 199 72 L 201 80 L 203 89 L 205 99 L 207 110 L 209 121 L 211 133 L 212 145 L 214 157 L 216 170 L 218 181 L 220 193"/></svg></article><article class="card"><h2>온도</h2><div class="value">25.9 <span class="unit">°C</span></div>
+<svg viewBox="0 0 460 310" role="img" aria-label="온도 그래프">
+<line class="axis" x1="70" y1="10" x2="70" y2="290"/><line class="axis" x1="70" y1="290" x2="450" y2="290"/>
+<text class="label" x="4" y="18">26.5</text><text class="label" x="4" y="153">24.5</text><text class="label" x="4" y="290">22.5</text>
+<path class="trace" stroke="#ff795c" d="M 70 150 L 72 139 L 74 127 L 76 116 L 78 105 L 80 95 L 81 85 L 83 75 L 85 66 L 87 58 L 89 51 L 91 44 L 93 38 L 95 33 L 97 30 L 98 27 L 100 25 L 102 24 L 104 24 L 106 26 L 108 28 L 110 31 L 112 35 L 114 41 L 116 47 L 118 54 L 119 62 L 121 70 L 123 79 L 125 89 L 127 99 L 129 110 L 131 121 L 133 132 L 135 144 L 136 155 L 138 166 L 140 178 L 142 189 L 144 200 L 146 210 L 148 220 L 150 229 L 152 237 L 154 245 L 156 252 L 157 259 L 159 264 L 161 268 L 163 272 L 165 274 L 167 276 L 169 276 L 171 275 L 173 274 L 174 271 L 176 267 L 178 262 L 180 257 L 182 250 L 184 243 L 186 235 L 188 226 L 190 216 L 192 206 L 194 196 L 195 185 L 197 174 L 199 163 L 201 151 L 203 140 L 205 129 L 207 117 L 209 106 L 211 96 L 212 86 L 214 76 L 216 67 L 218 59 L 220 51"/></svg></article><article class="card"><h2>습도</h2><div class="value">47.8 <span class="unit">%</span></div>
+<svg viewBox="0 0 460 310" role="img" aria-label="습도 그래프">
+<line class="axis" x1="70" y1="10" x2="70" y2="290"/><line class="axis" x1="70" y1="290" x2="450" y2="290"/>
+<text class="label" x="4" y="18">53.0</text><text class="label" x="4" y="153">48.0</text><text class="label" x="4" y="290">43.0</text>
+<path class="trace" stroke="#20b486" d="M 70 10 L 72 11 L 74 13 L 76 16 L 78 21 L 80 27 L 81 35 L 83 43 L 85 53 L 87 63 L 89 74 L 91 87 L 93 99 L 95 113 L 97 126 L 98 140 L 100 154 L 102 168 L 104 182 L 106 195 L 108 208 L 110 221 L 112 232 L 114 243 L 116 253 L 118 262 L 119 270 L 121 277 L 123 282 L 125 286 L 127 289 L 129 290 L 131 290 L 133 288 L 135 285 L 136 281 L 138 276 L 140 269 L 142 261 L 144 252 L 146 242 L 148 231 L 150 219 L 152 206 L 154 193 L 156 180 L 157 166 L 159 152 L 161 138 L 163 124 L 165 110 L 167 97 L 169 84 L 171 72 L 173 61 L 174 51 L 176 41 L 178 33 L 180 26 L 182 20 L 184 16 L 186 12 L 188 11 L 190 10 L 192 11 L 194 13 L 195 17 L 197 22 L 199 28 L 201 36 L 203 45 L 205 54 L 207 65 L 209 76 L 211 89 L 212 102 L 214 115 L 216 129 L 218 143 L 220 157"/></svg></article></section>
+<section class="card actions">
+<form method="post" action="/sensing_on"><button>측정 시작</button></form>
+<form method="post" action="/sensing_off"><button class="secondary">측정 중지</button></form>
+<button class="secondary" onclick="syncTime()">기기 시간 동기화</button>
+<a class="button secondary" href="/measurements.csv">CSV 다운로드</a>
+<form method="post" action="/delete_csv" onsubmit="return confirm('저장된 데이터를 삭제할까요?')"><button class="danger">CSV 초기화</button></form>
+</section><div class="meta"><span>데이터: 2초 전 갱신</span><span>시간: 동기화됨</span><span>저장 대기: 3</span><span>누락: 0</span></div>
+</main><script>
+function syncTime(){var d=new Date(),q=['year='+d.getFullYear(),'month='+(d.getMonth()+1),'day='+d.getDate(),'weekday='+d.getDay(),'hour='+d.getHours(),'minute='+d.getMinutes(),'second='+d.getSeconds()].join('&');fetch('/set_time?'+q,{method:'POST'}).then(function(r){if(!r.ok)throw Error();location.reload()}).catch(function(){alert('시간 동기화에 실패했습니다.')})}
+</script></body></html>
