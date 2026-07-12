@@ -40,3 +40,11 @@ class AccessPoint:
             led.off()
 
         print("Access point stopped")
+
+    def get_network_info(self):
+        return {
+            "mode": "ap",
+            "ssid": self.ssid,
+            "ip_address": self.ap.ifconfig()[0],
+            "connected": self.ap.active(),
+        }

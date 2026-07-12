@@ -30,10 +30,20 @@ class HttpError(Exception):
 
 
 class WebServer:
-    def __init__(self, connector, time_service, csv_writer, led, host="0.0.0.0", port=80):
+    def __init__(
+        self,
+        connector,
+        time_service,
+        csv_writer,
+        led,
+        host="0.0.0.0",
+        port=80,
+        network_info_provider=None,
+    ):
         self.controller = WebControlService(connector, time_service, csv_writer)
         self.page_renderer = DashboardPageRenderer()
         self.led = led
+        self.network_info_provider = network_info_provider
         self.tcp_server = TcpServer(self.handle_request, host=host, port=port)
         self._routes = self._build_routes()
 
@@ -179,8 +189,20 @@ class WebServer:
         self._send_redirect(client_socket, "/")
 
     def _send_page(self, client_socket):
-        page = self.page_renderer.render(self.controller.dashboard_payload())
+        payload = self.controller.dashboard_payload()
+        payload["network_info"] = self._get_network_info()
+        page = self.page_renderer.render(payload)
         self._send_response(client_socket, 200, page, "text/html; charset=utf-8")
+
+    def _get_network_info(self):
+        if self.network_info_provider is None:
+            return {
+                "mode": "unknown",
+                "ssid": "-",
+                "ip_address": "-",
+                "connected": False,
+            }
+        return self.network_info_provider.get_network_info()
 
     def _send_csv(self, client_socket):
         filename = self.controller.prepare_csv_download()

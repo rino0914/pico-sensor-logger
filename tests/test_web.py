@@ -7,6 +7,7 @@ from web.web_server import WebServer
 class FakeTimeService:
     def __init__(self):
         self.synchronized = False
+        self.current_time = (2026, 7, 12, 6, 9, 30, 45, 0)
 
     def synchronize(self, *values):
         self.values = values
@@ -14,6 +15,9 @@ class FakeTimeService:
 
     def is_synchronized(self):
         return self.synchronized
+
+    def now(self):
+        return self.current_time
 
 
 class FakeCsvWriter:
@@ -41,6 +45,16 @@ class FakeLed:
 
     def off(self):
         self.enabled = False
+
+
+class FakeNetworkInfoProvider:
+    def get_network_info(self):
+        return {
+            "mode": "station",
+            "ssid": "CLASSROOM_WIFI",
+            "ip_address": "192.168.0.37",
+            "connected": True,
+        }
 
 
 class FakeSocket:
@@ -77,7 +91,14 @@ class WebServerTest(unittest.TestCase):
         self.connector = DataConnector()
         self.time = FakeTimeService()
         self.csv = FakeCsvWriter()
-        self.server = WebServer(self.connector, self.time, self.csv, FakeLed(), port=8080)
+        self.server = WebServer(
+            self.connector,
+            self.time,
+            self.csv,
+            FakeLed(),
+            port=8080,
+            network_info_provider=FakeNetworkInfoProvider(),
+        )
 
     def request(self, method, target):
         client = FakeSocket("%s %s HTTP/1.1\r\nHost: logger\r\n\r\n" % (method, target))
@@ -85,11 +106,24 @@ class WebServerTest(unittest.TestCase):
         return bytes(client.response)
 
     def test_dashboard_contains_controls_and_charts(self):
+        self.time.synchronized = True
         response = self.request("GET", "/")
         self.assertIn(b"HTTP/1.1 200 OK", response)
         self.assertIn("CO₂".encode("utf-8"), response)
         self.assertIn(b"/sensing_on", response)
         self.assertIn(b"measurements.csv", response)
+        self.assertIn(b"CLASSROOM_WIFI", response)
+        self.assertIn(b"192.168.0.37", response)
+        self.assertIn(b"Station", response)
+        self.assertIn(b"2026-07-12 09:30:45", response)
+        self.assertIn("초기값 대비 변화율 (%)".encode("utf-8"), response)
+        self.assertIn("측정 시간 (분:초, 최신값 기준)".encode("utf-8"), response)
+        self.assertIn("이산화탄소 농도 (ppm)".encode("utf-8"), response)
+
+    def test_dashboard_shows_time_sync_required_before_synchronization(self):
+        response = self.request("GET", "/")
+
+        self.assertIn("동기화 필요".encode("utf-8"), response)
 
     def test_time_sync_accepts_declared_query(self):
         response = self.request(

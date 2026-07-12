@@ -35,12 +35,18 @@ class WebControlService:
         return STATUS_TEXT_BY_CODE[self._status_code]
 
     def dashboard_payload(self):
+        time_synchronized = self.time_service.is_synchronized()
         return {
             "data_snapshot": self.connector.snapshot(),
             "status_text": self.status_text,
             "csv_file_name": self.csv_file_name,
             "pending_count": self.csv_writer.pending_count(),
-            "time_synchronized": self.time_service.is_synchronized(),
+            "time_synchronized": time_synchronized,
+            "current_time": (
+                self.time_service.now()
+                if time_synchronized
+                else None
+            ),
         }
 
     def _set_status(self, status_code):

@@ -1,0 +1,19 @@
+from devices.ap import AccessPoint
+from devices.station import Station
+
+
+def create_wifi(config):
+    if config.wifi_mode == "ap":
+        return AccessPoint(
+            config.wifi_ssid,
+            config.wifi_ifconfig,
+        )
+
+    if config.wifi_mode == "station":
+        return Station(
+            config.wifi_ssid,
+            config.wifi_password,
+            config.wifi_connect_timeout_seconds,
+        )
+
+    raise ValueError("Unsupported Wi-Fi mode: %s" % config.wifi_mode)

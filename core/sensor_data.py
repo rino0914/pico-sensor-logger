@@ -21,6 +21,7 @@ class SensorStatsBuffer:
         self.co2        = array("f", [0.0] * self.size)
         self.temperature = array("f", [0.0] * self.size)
         self.humidity   = array("f", [0.0] * self.size)
+        self.sample_ticks = array("I", [0] * self.size)
 
     # @brief 현재 버퍼에 저장된 유효한 측정값 개수를 반환
     # @return 0부터 버퍼 최대 크기 사이의 데이터 개수
@@ -40,12 +41,13 @@ class SensorStatsBuffer:
     # @param temperature 온도(°C)
     # @return 없음
     # @note 버퍼가 가득 차면 가장 오래된 값을 새 값으로 overwrite
-    def append(self, co2, humidity, temperature):
+    def append(self, co2, humidity, temperature, sample_ticks=0):
         index = self.head
 
         self.co2[index]        = co2
         self.humidity[index]   = humidity
         self.temperature[index] = temperature
+        self.sample_ticks[index] = sample_ticks
 
         self.head = (self.head + 1) % self.size
         if self.count < self.size:
@@ -161,10 +163,21 @@ class SensorStatsBuffer:
     # @return (CO2 배열, 온도 배열, 습도 배열)
     def chart_snapshot(self):
         return (
-            self._copy_series(self.FIELD_CO2),
-            self._copy_series(self.FIELD_TEMPERATURE),
-            self._copy_series(self.FIELD_HUMIDITY),
+            (
+                self._copy_series(self.FIELD_CO2),
+                self._copy_series(self.FIELD_TEMPERATURE),
+                self._copy_series(self.FIELD_HUMIDITY),
+            ),
+            self._copy_sample_ticks(),
         )
+
+    def _copy_sample_ticks(self):
+        start = self._start_index()
+        copied = array("I", [0] * self.count)
+        for offset in range(self.count):
+            index = (start + offset) % self.size
+            copied[offset] = self.sample_ticks[index]
+        return copied
 
     # @brief 가장 최근에 추가된 측정값 반환
     # @return (CO2, 습도, 온도) 튜플, 데이터가 없으면 None

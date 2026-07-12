@@ -22,6 +22,7 @@ class DataSnapshot:
     def __init__(
         self,
         series,
+        time_offsets,
         latest_timestamp,
         age_ms,
         is_stale,
@@ -30,6 +31,7 @@ class DataSnapshot:
         sensing_enabled,
     ):
         self.series = series
+        self.time_offsets = time_offsets
         self.latest_timestamp = latest_timestamp
         self.age_ms = age_ms
         self.is_stale = is_stale
@@ -97,6 +99,7 @@ class _MesurementRunTimeState:
     def build_snapshot(
         self,
         series,
+        time_offsets,
         pending_count,
         dropped_count,
         state_after_ms,
@@ -113,6 +116,7 @@ class _MesurementRunTimeState:
 
         return DataSnapshot(
             series=series,
+            time_offsets=time_offsets,
             latest_timestamp=self._latest_timestamp,
             age_ms=age_ms,
             is_stale=is_stale,
@@ -170,7 +174,12 @@ class DataConnector:
             if not self._runtime_state.is_enabled():
                 return None
 
-            self._stats_buffer.append(co2, humidity, temperature)
+            self._stats_buffer.append(
+                co2,
+                humidity,
+                temperature,
+                ticks_ms(),
+            )
             self._runtime_state.mark_published(timestamp)
             self._pending_queue.push(file_record)
             return file_record
@@ -224,14 +233,26 @@ class DataConnector:
         """웹 표시용 데이터와 최신성·파일 backlog를 한 시점에 반환한다."""
         self._lock.acquire()
         try:
+            series, sample_ticks = self._stats_buffer.chart_snapshot()
             return self._runtime_state.build_snapshot(
-                series=self._stats_buffer.chart_snapshot(),
+                series=series,
+                time_offsets=self._time_offsets(sample_ticks),
                 pending_count=self._pending_queue.pending_count(),
                 dropped_count=self._pending_queue.dropped_count(),
                 state_after_ms=stale_after_ms,
             )
         finally:
             self._lock.release()
+
+    @staticmethod
+    def _time_offsets(sample_ticks):
+        if not sample_ticks:
+            return ()
+        first_tick = sample_ticks[0]
+        return tuple(
+            ticks_diff(sample_tick, first_tick) / 1000.0
+            for sample_tick in sample_ticks
+        )
 
     def pending_count(self):
         """파일 저장을 기다리는 측정값 개수를 반환한다."""

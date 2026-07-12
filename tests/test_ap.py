@@ -62,6 +62,12 @@ class AccessPointTest(unittest.TestCase):
         access_point.start()
         self.assertTrue(self.network.ap.active_state)
         self.assertEqual(network_config, self.network.ap.network_config)
+        self.assertEqual({
+            "mode": "ap",
+            "ssid": "Pico_Science_01",
+            "ip_address": "192.168.4.1",
+            "connected": True,
+        }, access_point.get_network_info())
 
         access_point.stop()
         self.assertFalse(self.network.ap.active_state)

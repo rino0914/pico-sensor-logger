@@ -4,9 +4,10 @@ from machine import I2C, Pin
 
 from config_loader import AppConfig
 from core.data_connector import DataConnector
+from core.ntp_client import NtpClient
 from core.time_service import TimeService
 from devices import scd40, scd40_thread
-from devices.ap import AccessPoint
+from devices.wifi import create_wifi
 from storage.filemanager import CsvWriter, FileHandler
 from web.web_server import WebServer
 
@@ -49,23 +50,34 @@ class PicoSenscorLoggerApp:
         
         self.connector = DataConnector()
         self.time_service = TimeService()
+        self.ntp_client = NtpClient()
         self.csv_writer = create_csv_writer(self.config, self.connector)
-        self.ap = AccessPoint(
-            self.config.wifi_ssid,
-            self.config.wifi_ifconfig,
-        )
+        self.wifi = create_wifi(self.config)
         self.web_server = WebServer(
             connector=self.connector,
             time_service=self.time_service,
             csv_writer=self.csv_writer,
             led=self.status_led,
+            network_info_provider=self.wifi,
         )
         self.sensor = create_sensor(self.connector, self.time_service)
     
     def start(self):
-        self.ap.start(self.status_led)
+        self.wifi.start(self.status_led)
+        self._synchronize_station_time()
         self.web_server.start()
         self.sensor.start()
+
+    def _synchronize_station_time(self):
+        if self.config.wifi_mode != "station":
+            return
+
+        try:
+            values = self.ntp_client.request_local_datetime()
+            self.time_service.synchronize(*values)
+            print("[INFO] Time synchronized from NTP:", self.ntp_client.server)
+        except Exception as error:
+            print("[WARN] Failed to synchronize time from NTP:", error)
         
     def stop(self):
         err = None
@@ -74,7 +86,7 @@ class PicoSenscorLoggerApp:
         err = self._run_stop_step("sensor shutdown await", self._await_sensor_stop, err)
         err = self._run_stop_step("sensing state", self.connector.stop_sensing, err)
         err = self._run_stop_step("csv writer flush", self.csv_writer.flush, err)
-        err = self._run_stop_step("access point", lambda: self.ap.stop(self.status_led), err)
+        err = self._run_stop_step("wifi", lambda: self.wifi.stop(self.status_led), err)
         if err:
             print("[ERROR] Failed to stop some components:", err)
 
