@@ -1,6 +1,7 @@
 """샘플 센서 데이터로 대시보드 미리보기 HTML을 생성한다."""
 
 import math
+import json
 
 from web.page_renderer import DashboardPageRenderer
 
@@ -26,8 +27,23 @@ class PreviewSnapshot:
 
 
 def main():
+    snapshot = PreviewSnapshot()
+    preview_measurements = {
+        "time_offsets": snapshot.time_offsets,
+        "co2": snapshot.series[0],
+        "temperature": snapshot.series[1],
+        "humidity": snapshot.series[2],
+        "latest_timestamp": snapshot.latest_timestamp,
+        "age_ms": snapshot.age_ms,
+        "is_stale": snapshot.is_stale,
+        "sensing_enabled": snapshot.sensing_enabled,
+        "pending_count": snapshot.pending_count,
+        "dropped_count": snapshot.dropped_count,
+        "time_synchronized": True,
+        "current_time": [2026, 7, 12, 6, 9, 30, 45, 0],
+    }
     payload = {
-        "data_snapshot": PreviewSnapshot(),
+        "data_snapshot": snapshot,
         "status_text": "측정 중 · 미리보기 데이터",
         "csv_file_name": "measurements.csv",
         "pending_count": 3,
@@ -39,6 +55,11 @@ def main():
             "ip_address": "192.168.0.37",
             "connected": True,
         },
+        "chart_bootstrap_script": (
+            "window.PREVIEW_MEASUREMENTS="
+            + json.dumps(preview_measurements)
+            + ";"
+        ),
     }
     html = DashboardPageRenderer().render(payload)
     with open(OUTPUT_FILE, "w", encoding="utf-8") as preview_file:

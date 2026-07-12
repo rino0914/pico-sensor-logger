@@ -1,4 +1,5 @@
 import unittest
+import json
 
 from core.data_connector import DataConnector
 from web.web_server import WebServer
@@ -119,6 +120,10 @@ class WebServerTest(unittest.TestCase):
         self.assertIn("초기값 대비 변화율 (%)".encode("utf-8"), response)
         self.assertIn("측정 시간 (분:초, 최신값 기준)".encode("utf-8"), response)
         self.assertIn("이산화탄소 농도 (ppm)".encode("utf-8"), response)
+        self.assertIn(b'data-chart="comparison"', response)
+        self.assertIn(b'class="chart-tooltip"', response)
+        self.assertIn(b"fetch(CHART_API", response)
+        self.assertNotIn(b'http-equiv="refresh"', response)
 
     def test_dashboard_shows_time_sync_required_before_synchronization(self):
         response = self.request("GET", "/")
@@ -180,6 +185,36 @@ class WebServerTest(unittest.TestCase):
         response = self.request("GET", "/measurements.csv")
         self.assertIn(b"Content-Type: text/csv", response)
         self.assertTrue(response.endswith(b"timestamp,co2\n"))
+
+    def test_measurements_api_returns_chart_data_as_json(self):
+        self.time.synchronized = True
+        self.connector.start_sensing()
+        self.connector.publish(
+            (2026, 7, 12, 6, 9, 30, 45, 0),
+            512,
+            48.5,
+            24.3,
+        )
+
+        response = self.request("GET", "/api/measurements")
+        headers, body = response.split(b"\r\n\r\n", 1)
+        payload = json.loads(body.decode("utf-8"))
+
+        self.assertIn(b"Content-Type: application/json", headers)
+        self.assertIn(b"Cache-Control: no-store", headers)
+        self.assertEqual([512.0], payload["co2"])
+        self.assertAlmostEqual(24.3, payload["temperature"][0], places=4)
+        self.assertAlmostEqual(48.5, payload["humidity"][0], places=4)
+        self.assertEqual([0.0], payload["time_offsets"])
+        self.assertEqual(
+            [2026, 7, 12, 6, 9, 30, 45, 0],
+            payload["latest_timestamp"],
+        )
+        self.assertTrue(payload["sensing_enabled"])
+        self.assertEqual(
+            [2026, 7, 12, 6, 9, 30, 45, 0],
+            payload["current_time"],
+        )
 
 
 if __name__ == "__main__":

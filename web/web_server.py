@@ -4,6 +4,11 @@ except ImportError:
     def unquote_plus(value):
         return value.replace("+", " ")
 
+try:
+    import ujson as json
+except ImportError:
+    import json
+
 from web.controller import WebControlService
 from web.page_renderer import DashboardPageRenderer
 from web.tcp import TcpServer
@@ -64,6 +69,7 @@ class WebServer:
         return {
             "/": {"GET": self._handle_page},
             "/value_send": {"GET": self._handle_page},
+            "/api/measurements": {"GET": self._handle_measurements},
             "/set_time": {"POST": self._handle_set_time},
             "/delete_csv": {"POST": self._handle_delete_csv},
             "/sensing_on": {"POST": self._handle_sensing_on},
@@ -173,6 +179,16 @@ class WebServer:
     def _handle_set_time(self, client_socket, query):
         self.controller.synchronize_time(query)
         self._send_response(client_socket, 204, b"")
+
+    def _handle_measurements(self, client_socket, query):
+        body = json.dumps(self.controller.measurements_payload())
+        self._send_response(
+            client_socket,
+            200,
+            body,
+            "application/json; charset=utf-8",
+            headers={"Cache-Control": "no-store"},
+        )
 
     def _handle_delete_csv(self, client_socket, query):
         self.controller.delete_csv()

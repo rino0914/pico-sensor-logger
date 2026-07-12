@@ -49,6 +49,32 @@ class WebControlService:
             ),
         }
 
+    def measurements_payload(self):
+        snapshot = self.connector.snapshot()
+        time_synchronized = self.time_service.is_synchronized()
+        return {
+            "time_offsets": list(snapshot.time_offsets),
+            "co2": list(snapshot.series[0]),
+            "temperature": list(snapshot.series[1]),
+            "humidity": list(snapshot.series[2]),
+            "latest_timestamp": (
+                list(snapshot.latest_timestamp)
+                if snapshot.latest_timestamp is not None
+                else None
+            ),
+            "age_ms": snapshot.age_ms,
+            "is_stale": snapshot.is_stale,
+            "sensing_enabled": snapshot.sensing_enabled,
+            "pending_count": snapshot.pending_count,
+            "dropped_count": snapshot.dropped_count,
+            "time_synchronized": time_synchronized,
+            "current_time": (
+                list(self.time_service.now())
+                if time_synchronized
+                else None
+            ),
+        }
+
     def _set_status(self, status_code):
         self._status_code = status_code
 

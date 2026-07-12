@@ -7,9 +7,10 @@ Pico W는 비밀번호 없는 액세스 포인트를 만들거나 기존 Wi-Fi�
 ## 주요 기능
 
 - SCD40의 CO₂·온도·습도 측정
-- 최근 200개 측정값의 통계 및 SVG 그래프 표시
+- 최근 200개 측정값을 JSON으로 받아 브라우저에서 그리는 대화형 SVG 그래프
 - 실제 측정 시간과 단위별 세부 눈금을 표시하는 센서별 정밀 그래프
 - 초기값 대비 변화율로 CO₂·온도·습도 추이를 비교하는 통합 그래프
+- 마우스와 터치로 특정 시점의 정확한 측정값을 확인하는 툴팁
 - 모바일 중심의 반응형 다크 테마 대시보드
 - Station 모드의 NTP 자동 동기화와 브라우저를 이용한 수동 RTC 동기화
 - 대시보드에서 현재 Pico RTC 시각 표시
@@ -97,6 +98,8 @@ Station 모드는 Wi-Fi 연결 후 `pool.ntp.org`에서 시간을 받아 한국 
 
 통합 그래프는 단위와 값의 크기가 서로 다른 세 센서를 한 축에서 비교하기 위해 각 센서의 첫 측정값을 `0%`로 둔 변화율을 사용합니다. 따라서 통합 그래프는 절대값 비교가 아니라 변화 방향과 상대적인 증감 폭을 해석하는 용도이며, 정확한 값은 센서별 그래프와 범례에서 확인해야 합니다.
 
+그래프 위에서 마우스를 움직이거나 터치하면 가장 가까운 측정 시점에 세로선과 선택점이 표시됩니다. 툴팁에서 해당 시점의 경과 시간과 센서 측정값을 확인할 수 있습니다. 그래프는 페이지 전체를 새로고침하지 않고 `/api/measurements`에서 5초마다 최신 데이터를 가져와 갱신합니다.
+
 ## CSV 형식
 
 측정값은 다음 형식으로 저장됩니다.
@@ -114,6 +117,7 @@ timestamp,CO2(ppm),temperature(°C),humidity(%)
 |---|---|---|
 | `/` | GET | 대시보드 표시 |
 | `/value_send` | GET | 대시보드 갱신용 페이지 표시 |
+| `/api/measurements` | GET | 최근 측정 시간과 CO₂·온도·습도 JSON 반환 |
 | `/set_time` | POST | query string으로 RTC 동기화 |
 | `/sensing_on` | POST | 측정 시작 |
 | `/sensing_off` | POST | 측정 중지 |
@@ -151,7 +155,7 @@ web/
   web_server.py                 HTTP 파싱, 라우팅, 응답
   controller.py                 웹 요청과 애플리케이션 상태 연결
   page_renderer.py              모바일 대시보드 HTML 렌더링
-  chart.py                      SVG 그래프 좌표와 경로 생성
+  chart_client.py               브라우저 SVG 그래프와 툴팁 JavaScript
 
 tests/
   test_ap.py                    개방형 AP 시작 및 종료 테스트
@@ -188,7 +192,7 @@ PYTHONPYCACHEPREFIX=/private/tmp/ptl-pyc \
 python3 -m unittest discover -s tests -v
 ```
 
-현재 테스트는 AP/Station 네트워크 설정과 생명주기, HTTP 분할 수신, `Content-Length`, 요청 크기 제한, 지원하지 않는 chunked 요청, 라우팅, 시간 동기화, 측정 제어, CSV 다운로드와 대시보드 렌더링을 검사합니다.
+현재 테스트는 AP/Station 네트워크 설정과 생명주기, 측정 데이터 JSON API, HTTP 분할 수신, `Content-Length`, 요청 크기 제한, 지원하지 않는 chunked 요청, 라우팅, 시간 동기화, 측정 제어, CSV 다운로드와 대시보드 렌더링을 검사합니다.
 
 ## Pico W 배포
 
@@ -211,5 +215,5 @@ web/
 - HTTP/1.1의 기본 요청만 처리하며 keep-alive와 chunked body는 지원하지 않습니다.
 - 한 번에 하나의 HTTP 클라이언트를 처리합니다.
 - 클라이언트 요청 제한 시간은 1초입니다.
-- 웹 페이지는 10초마다 자동 갱신됩니다.
+- 그래프 데이터는 브라우저에서 5초마다 갱신합니다.
 - 실제 Pico W 펌웨어에서 Wi-Fi, 소켓 timeout, SCD40 배선과 센서 응답을 최종 확인해야 합니다.
