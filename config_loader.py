@@ -6,20 +6,16 @@ except ImportError:
 EXPECTED_CSV_FIELD_NAMES = ["timestamp", "CO2(ppm)", "temperature(°C)", "humidity(%)"]
 
 MAX_WIFI_SSID_LENGTH = 32
-MAX_WIFI_PASSWORD_LENGTH = 64
-MIN_WIFI_PASSWORD_LENGTH = 8
 
 class AppConfig:
     def __init__(
         self,
         wifi_ssid,
-        wifi_password,
         wifi_ifconfig,
         logfile_filename,
         logfile_field_names,
     ):
         self.wifi_ssid = wifi_ssid
-        self.wifi_password = wifi_password
         self.wifi_ifconfig = wifi_ifconfig
         self.logfile_filename = logfile_filename
         self.logfile_field_names = logfile_field_names
@@ -36,7 +32,6 @@ class AppConfig:
         wifi_network = wifi_values.get("network", "")
         return cls(
             wifi_ssid=cls._normalize_ssid(wifi_values.get("ssid", "")),
-            wifi_password=cls._normalize_wifi_password(wifi_values.get("password", "")),
             wifi_ifconfig=cls._normalize_network_ifconfig(wifi_network, "wifi.network"),
             logfile_filename=cls._require_string(logfile_values.get("filename"), "logfile.filename"),
             logfile_field_names=cls._normalize_field_names(
@@ -124,11 +119,4 @@ class AppConfig:
         cls._require_string(value, "wifi.ssid")
         if len(value) > MAX_WIFI_SSID_LENGTH:
             raise ValueError(f"wifi.ssid must not exceed {MAX_WIFI_SSID_LENGTH} characters")
-        return value
-
-    @classmethod
-    def _normalize_wifi_password(cls, value):
-        cls._require_string(value, "wifi.password")
-        if len(value) < MIN_WIFI_PASSWORD_LENGTH or len(value) > MAX_WIFI_PASSWORD_LENGTH:
-            raise ValueError(f"wifi.password must be between {MIN_WIFI_PASSWORD_LENGTH} and {MAX_WIFI_PASSWORD_LENGTH} characters")
         return value

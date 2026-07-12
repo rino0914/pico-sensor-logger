@@ -1,17 +1,18 @@
 import network
 
 WIFI_POWER_SAVE_DISABLED = 0xA11140
+OPEN_SECURITY = 0
+
 
 class AccessPoint:
-    def __init__(self, ssid, password, network_ifconfig=None):
+    def __init__(self, ssid, network_ifconfig=None):
         self.ssid = ssid
-        self.password = password
         self.network_ifconfig = network_ifconfig
         self.ap = network.WLAN(network.AP_IF)
         self.ap.config(
-            ssid     = self.ssid,
-            password = self.password,
-            pm       = WIFI_POWER_SAVE_DISABLED,
+            ssid=self.ssid,
+            security=OPEN_SECURITY,
+            pm=WIFI_POWER_SAVE_DISABLED,
         )
 
     def start(self, led=None):
@@ -29,6 +30,7 @@ class AccessPoint:
         print("IP address:", self.ap.ifconfig()[0])
         print("AP Mode Is Active, You can Now Connect")
         print("WiFi Name:", self.ssid)
+        print("Security: open")
         print("Access point started")
 
     def stop(self, led=None):

@@ -52,9 +52,8 @@ class PicoSenscorLoggerApp:
         self.csv_writer = create_csv_writer(self.config, self.connector)
         self.ap = AccessPoint(
             self.config.wifi_ssid,
-            self.config.wifi_password,
             self.config.wifi_ifconfig,
-            )
+        )
         self.web_server = WebServer(
             connector=self.connector,
             time_service=self.time_service,
