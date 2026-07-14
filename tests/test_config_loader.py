@@ -27,6 +27,7 @@ class AppConfigTest(unittest.TestCase):
             "mode": "ap",
             "ap": {
                 "ssid": "Pico_Science_01",
+                "channel": 6,
                 "network": {
                     "ip": "192.168.4.1",
                     "netmask": "255.255.255.0",
@@ -43,14 +44,88 @@ class AppConfigTest(unittest.TestCase):
         self.assertEqual("ap", config.wifi_mode)
         self.assertIsNone(config.wifi_password)
         self.assertEqual("192.168.4.1", config.wifi_ifconfig[0])
+        self.assertEqual(6, config.wifi_channel)
+        self.assertFalse(config.wifi_trace_enabled)
         self.assertIsNone(config.wifi_connect_timeout_seconds)
         self.assertEqual(2, config.sensor_grove_port)
+
+    def test_uses_default_access_point_channel_when_missing(self):
+        config = AppConfig.from_dict(create_config({
+            "mode": "ap",
+            "ap": {
+                "ssid": "Pico_Science_01",
+                "network": {
+                    "ip": "192.168.4.1",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.4.1",
+                    "dns": "8.8.8.8",
+                },
+            },
+        }))
+
+        self.assertEqual(1, config.wifi_channel)
+
+    def test_rejects_invalid_access_point_channel(self):
+        values = create_config({
+            "mode": "ap",
+            "ap": {
+                "ssid": "Pico_Science_01",
+                "channel": 12,
+                "network": {
+                    "ip": "192.168.4.1",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.4.1",
+                    "dns": "8.8.8.8",
+                },
+            },
+        })
+
+        with self.assertRaisesRegex(ValueError, "wifi.ap.channel"):
+            AppConfig.from_dict(values)
+
+    def test_loads_wifi_trace_diagnostic_flag(self):
+        values = create_config({
+            "mode": "ap",
+            "ap": {
+                "ssid": "Pico_Science_01",
+                "network": {
+                    "ip": "192.168.4.1",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.4.1",
+                    "dns": "8.8.8.8",
+                },
+            },
+        })
+        values["diagnostics"] = {"wifi_trace": True}
+
+        config = AppConfig.from_dict(values)
+
+        self.assertTrue(config.wifi_trace_enabled)
+
+    def test_rejects_non_boolean_wifi_trace_flag(self):
+        values = create_config({
+            "mode": "ap",
+            "ap": {
+                "ssid": "Pico_Science_01",
+                "network": {
+                    "ip": "192.168.4.1",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.4.1",
+                    "dns": "8.8.8.8",
+                },
+            },
+        })
+        values["diagnostics"] = {"wifi_trace": 1}
+
+        with self.assertRaisesRegex(ValueError, "diagnostics.wifi_trace"):
+            AppConfig.from_dict(values)
 
     def test_uses_default_grove_port_when_sensor_setting_is_missing(self):
         values = create_config({
             "mode": "ap",
             "ap": {
                 "ssid": "Pico_Science_01",
+                "channel": 6,
                 "network": {
                     "ip": "192.168.4.1",
                     "netmask": "255.255.255.0",
@@ -138,6 +213,7 @@ class AppConfigTest(unittest.TestCase):
         self.assertEqual("wifi-password", config.wifi_password)
         self.assertEqual(20, config.wifi_connect_timeout_seconds)
         self.assertIsNone(config.wifi_ifconfig)
+        self.assertIsNone(config.wifi_channel)
 
     def test_station_mode_requires_password(self):
         with self.assertRaisesRegex(ValueError, "wifi.station.password"):

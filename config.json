@@ -3,6 +3,7 @@
     "mode": "ap",
     "ap": {
       "ssid": "pico_science_",
+      "channel": 1,
       "network": {
         "ip": "192.168.4.1",
         "netmask": "255.255.255.0",
@@ -19,6 +20,10 @@
 
   "sensor": {
     "grove_port": 2
+  },
+
+  "diagnostics": {
+    "wifi_trace": false
   },
 
   "logfile": {

@@ -16,6 +16,9 @@ MIN_WIFI_PASSWORD_LENGTH = 8
 MAX_WIFI_PASSWORD_LENGTH = 64
 DEFAULT_WIFI_CONNECT_TIMEOUT_SECONDS = 15
 MAX_WIFI_CONNECT_TIMEOUT_SECONDS = 120
+DEFAULT_WIFI_AP_CHANNEL = 1
+MIN_WIFI_AP_CHANNEL = 1
+MAX_WIFI_AP_CHANNEL = 11
 
 class AppConfig:
     def __init__(
@@ -24,6 +27,8 @@ class AppConfig:
         wifi_ssid,
         wifi_password,
         wifi_ifconfig,
+        wifi_channel,
+        wifi_trace_enabled,
         wifi_connect_timeout_seconds,
         sensor_grove_port,
         logfile_filename,
@@ -33,6 +38,8 @@ class AppConfig:
         self.wifi_ssid = wifi_ssid
         self.wifi_password = wifi_password
         self.wifi_ifconfig = wifi_ifconfig
+        self.wifi_channel = wifi_channel
+        self.wifi_trace_enabled = wifi_trace_enabled
         self.wifi_connect_timeout_seconds = wifi_connect_timeout_seconds
         self.sensor_grove_port = sensor_grove_port
         self.logfile_filename = logfile_filename
@@ -50,6 +57,14 @@ class AppConfig:
         sensor_values = cls._require_mapping(
             values.get("sensor", {}),
             "sensor",
+        )
+        diagnostics_values = cls._require_mapping(
+            values.get("diagnostics", {}),
+            "diagnostics",
+        )
+        wifi_trace_enabled = cls._normalize_boolean(
+            diagnostics_values.get("wifi_trace", False),
+            "diagnostics.wifi_trace",
         )
         wifi_mode = cls._normalize_wifi_mode(wifi_values.get("mode"))
         wifi_profile_path = "wifi.%s" % wifi_mode
@@ -74,6 +89,10 @@ class AppConfig:
                     )
                 )
             wifi_password = None
+            wifi_channel = cls._normalize_wifi_channel(
+                wifi_profile.get("channel", DEFAULT_WIFI_AP_CHANNEL),
+                "%s.channel" % wifi_profile_path,
+            )
             wifi_ifconfig = cls._normalize_network_ifconfig(
                 wifi_profile.get("network"),
                 "%s.network" % wifi_profile_path,
@@ -85,6 +104,7 @@ class AppConfig:
                 "%s.password" % wifi_profile_path,
             )
             wifi_ifconfig = None
+            wifi_channel = None
             wifi_connect_timeout_seconds = cls._normalize_connect_timeout(
                 wifi_profile.get(
                     "connect_timeout_seconds",
@@ -98,6 +118,8 @@ class AppConfig:
             wifi_ssid=wifi_ssid,
             wifi_password=wifi_password,
             wifi_ifconfig=wifi_ifconfig,
+            wifi_channel=wifi_channel,
+            wifi_trace_enabled=wifi_trace_enabled,
             wifi_connect_timeout_seconds=wifi_connect_timeout_seconds,
             sensor_grove_port=normalize_i2c_grove_port(
                 sensor_values.get("grove_port", DEFAULT_GROVE_PORT),
@@ -222,4 +244,21 @@ class AppConfig:
                 "%s must be greater than 0 and at most %d"
                 % (path, MAX_WIFI_CONNECT_TIMEOUT_SECONDS)
             )
+        return value
+
+    @classmethod
+    def _normalize_wifi_channel(cls, value, path):
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("%s must be an integer" % path)
+        if not MIN_WIFI_AP_CHANNEL <= value <= MAX_WIFI_AP_CHANNEL:
+            raise ValueError(
+                "%s must be between %d and %d"
+                % (path, MIN_WIFI_AP_CHANNEL, MAX_WIFI_AP_CHANNEL)
+            )
+        return value
+
+    @classmethod
+    def _normalize_boolean(cls, value, path):
+        if not isinstance(value, bool):
+            raise ValueError("%s must be a boolean" % path)
         return value

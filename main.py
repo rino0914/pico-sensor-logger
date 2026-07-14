@@ -160,6 +160,8 @@ class PicoSenscorLoggerApp:
             while True:
                 try:
                     self.web_server.process_pending()
+                    if self.config.wifi_mode == "ap":
+                        self.wifi.process_pending()
                     self.sensor.process_pending()
                     self._process_storage()
 

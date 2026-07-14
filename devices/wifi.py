@@ -9,6 +9,8 @@ def create_wifi(config):
         return AccessPoint(
             ssid,
             config.wifi_ifconfig,
+            channel=config.wifi_channel,
+            trace_enabled=config.wifi_trace_enabled,
         )
 
     if config.wifi_mode == "station":
