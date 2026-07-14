@@ -19,6 +19,9 @@ MAX_WIFI_CONNECT_TIMEOUT_SECONDS = 120
 DEFAULT_WIFI_AP_CHANNEL = 1
 MIN_WIFI_AP_CHANNEL = 1
 MAX_WIFI_AP_CHANNEL = 11
+DEFAULT_MEASUREMENT_MAX_DURATION_MINUTES = 20
+MIN_MEASUREMENT_MAX_DURATION_MINUTES = 1
+MAX_MEASUREMENT_MAX_DURATION_MINUTES = 20
 
 class AppConfig:
     def __init__(
@@ -31,6 +34,7 @@ class AppConfig:
         wifi_trace_enabled,
         wifi_connect_timeout_seconds,
         sensor_grove_port,
+        measurement_max_duration_minutes,
         logfile_filename,
         logfile_field_names,
     ):
@@ -42,6 +46,7 @@ class AppConfig:
         self.wifi_trace_enabled = wifi_trace_enabled
         self.wifi_connect_timeout_seconds = wifi_connect_timeout_seconds
         self.sensor_grove_port = sensor_grove_port
+        self.measurement_max_duration_minutes = measurement_max_duration_minutes
         self.logfile_filename = logfile_filename
         self.logfile_field_names = logfile_field_names
         
@@ -61,6 +66,10 @@ class AppConfig:
         diagnostics_values = cls._require_mapping(
             values.get("diagnostics", {}),
             "diagnostics",
+        )
+        measurement_values = cls._require_mapping(
+            values.get("measurement", {}),
+            "measurement",
         )
         wifi_trace_enabled = cls._normalize_boolean(
             diagnostics_values.get("wifi_trace", False),
@@ -124,6 +133,13 @@ class AppConfig:
             sensor_grove_port=normalize_i2c_grove_port(
                 sensor_values.get("grove_port", DEFAULT_GROVE_PORT),
                 "sensor.grove_port",
+            ),
+            measurement_max_duration_minutes=cls._normalize_measurement_duration(
+                measurement_values.get(
+                    "max_duration_minutes",
+                    DEFAULT_MEASUREMENT_MAX_DURATION_MINUTES,
+                ),
+                "measurement.max_duration_minutes",
             ),
             logfile_filename=cls._require_string(logfile_values.get("filename"), "logfile.filename"),
             logfile_field_names=cls._normalize_field_names(
@@ -261,4 +277,19 @@ class AppConfig:
     def _normalize_boolean(cls, value, path):
         if not isinstance(value, bool):
             raise ValueError("%s must be a boolean" % path)
+        return value
+
+    @classmethod
+    def _normalize_measurement_duration(cls, value, path):
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("%s must be an integer" % path)
+        if not MIN_MEASUREMENT_MAX_DURATION_MINUTES <= value <= MAX_MEASUREMENT_MAX_DURATION_MINUTES:
+            raise ValueError(
+                "%s must be between %d and %d"
+                % (
+                    path,
+                    MIN_MEASUREMENT_MAX_DURATION_MINUTES,
+                    MAX_MEASUREMENT_MAX_DURATION_MINUTES,
+                )
+            )
         return value

@@ -89,6 +89,7 @@ class _MesurementRunTimeState:
         self._latest_timestamp = None
         self._last_publish_ticks = None
         self._experiment_start_ticks = None
+        self._experiment_end_ticks = None
         
     def start_sensing(self):
         if self._experiment_start_ticks is None:
@@ -96,6 +97,10 @@ class _MesurementRunTimeState:
         self._sensing_enabled = True
     def stop_sensing(self):
         self._sensing_enabled = False
+    def complete_sensing(self):
+        self._sensing_enabled = False
+        if self._experiment_start_ticks is not None:
+            self._experiment_end_ticks = ticks_ms()
     def is_enabled(self):
         return self._sensing_enabled
     def mark_published(self, timestamp):
@@ -122,9 +127,14 @@ class _MesurementRunTimeState:
 
         runtime_seconds = 0
         if self._experiment_start_ticks is not None:
+            runtime_end_ticks = (
+                self._experiment_end_ticks
+                if self._experiment_end_ticks is not None
+                else current_ticks
+            )
             runtime_seconds = max(
                 0,
-                ticks_diff(current_ticks, self._experiment_start_ticks) // 1000,
+                ticks_diff(runtime_end_ticks, self._experiment_start_ticks) // 1000,
             )
 
         return DataSnapshot(
@@ -143,6 +153,7 @@ class _MesurementRunTimeState:
         self._latest_timestamp = None
         self._last_publish_ticks = None
         self._experiment_start_ticks = None
+        self._experiment_end_ticks = None
 class DataConnector:
 
     def __init__(self, queue_size=DEFAULT_QUEUE_SIZE):
@@ -167,6 +178,14 @@ class DataConnector:
         self._lock.acquire()
         try:
             self._runtime_state.stop_sensing()
+        finally:
+            self._lock.release()
+
+    # @brief 제한 시간에 도달한 측정을 완료하고 경과 시간을 고정
+    def complete_sensing(self):
+        self._lock.acquire()
+        try:
+            self._runtime_state.complete_sensing()
         finally:
             self._lock.release()
             

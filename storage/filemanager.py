@@ -72,6 +72,17 @@ class FileHandler:
         finally:
             self._lock.release()
 
+    def count_lines(self):
+        self._lock.acquire()
+        try:
+            count = 0
+            with open(self.file_path, "r") as file:
+                for _ in file:
+                    count += 1
+            return count
+        finally:
+            self._lock.release()
+
     def iter_chunks(self, chunk_size=512):
         """호출 시점의 파일 크기까지만 잠금을 짧게 잡아 읽는다."""
         file = open(self.file_path, "rb")
@@ -105,13 +116,17 @@ class FileHandler:
 class CsvWriter:
     """DataConnector의 파일 큐를 소비해 CSV로 저장한다."""
 
-    def __init__(self, connector, file_handler, header):
+    def __init__(self, connector, file_handler, header, max_records=None):
+        if max_records is not None and max_records <= 0:
+            raise ValueError("max_records must be greater than zero")
         self._lock = _thread.allocate_lock()
         self.connector = connector
         self.file_handler = file_handler
         self.header = header
+        self.max_records = max_records
         self._pending = None
         self.file_handler.ensure_header(header)
+        self._written_count = max(0, self.file_handler.count_lines() - 1)
 
     @property
     def file_name(self):
@@ -121,6 +136,10 @@ class CsvWriter:
         """대기 중인 레코드 하나를 저장하며, 실패한 레코드는 재시도한다."""
         self._lock.acquire()
         try:
+            if self._is_full_locked():
+                self._discard_pending_locked()
+                return False
+
             if self._pending is None:
                 self._pending = self.connector.consume()
 
@@ -138,6 +157,7 @@ class CsvWriter:
                 )
             )
             self._pending = None
+            self._written_count += 1
             return True
         finally:
             self._lock.release()
@@ -170,6 +190,31 @@ class CsvWriter:
         finally:
             self._lock.release()
 
+    def record_count(self):
+        self._lock.acquire()
+        try:
+            return self._written_count
+        finally:
+            self._lock.release()
+
+    def is_full(self):
+        self._lock.acquire()
+        try:
+            return self._is_full_locked()
+        finally:
+            self._lock.release()
+
+    def _is_full_locked(self):
+        return (
+            self.max_records is not None
+            and self._written_count >= self.max_records
+        )
+
+    def _discard_pending_locked(self):
+        self._pending = None
+        while self.connector.consume() is not None:
+            pass
+
     def reset(self):
         """미저장 데이터와 차트 히스토리를 버리고 CSV를 초기화한다."""
         self._lock.acquire()
@@ -177,6 +222,7 @@ class CsvWriter:
             self._pending = None
             self.connector.clear()
             self.file_handler.reset(self.header)
+            self._written_count = 0
         finally:
             self._lock.release()
 

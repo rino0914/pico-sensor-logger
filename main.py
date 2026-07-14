@@ -4,6 +4,7 @@ from time import sleep
 
 from config_loader import AppConfig
 from core.data_connector import DataConnector
+from core.sensor_data import SCD40_SAMPLE_INTERVAL_SECONDS
 from core.ntp_client import NtpClient
 from core.time_service import TimeService
 from devices import grove, scd40, scd40_thread
@@ -24,7 +25,17 @@ def create_status_led():
 
 def create_csv_writer(config, connector):
     file_handler = FileHandler(config.logfile_filename)
-    return CsvWriter(connector, file_handler, config.logfile_header)
+    max_records = (
+        config.measurement_max_duration_minutes
+        * 60
+        // SCD40_SAMPLE_INTERVAL_SECONDS
+    )
+    return CsvWriter(
+        connector,
+        file_handler,
+        config.logfile_header,
+        max_records=max_records,
+    )
 
 def create_i2c(scl_pin, sda_pin):
     if scd40.I2C_USE_SOFT:
@@ -95,6 +106,9 @@ class PicoSenscorLoggerApp:
             csv_writer=self.csv_writer,
             led=self.status_led,
             network_info_provider=self.wifi,
+            measurement_max_duration_seconds=(
+                self.config.measurement_max_duration_minutes * 60
+            ),
         )
         self.sensor = create_sensor(self.config, self.connector, self.time_service)
     

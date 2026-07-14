@@ -48,6 +48,44 @@ class AppConfigTest(unittest.TestCase):
         self.assertFalse(config.wifi_trace_enabled)
         self.assertIsNone(config.wifi_connect_timeout_seconds)
         self.assertEqual(2, config.sensor_grove_port)
+        self.assertEqual(20, config.measurement_max_duration_minutes)
+
+    def test_loads_measurement_duration(self):
+        values = create_config({
+            "mode": "ap",
+            "ap": {
+                "ssid": "Pico_Science_01",
+                "network": {
+                    "ip": "192.168.4.1",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.4.1",
+                    "dns": "8.8.8.8",
+                },
+            },
+        })
+        values["measurement"] = {"max_duration_minutes": 15}
+
+        config = AppConfig.from_dict(values)
+
+        self.assertEqual(15, config.measurement_max_duration_minutes)
+
+    def test_rejects_measurement_duration_over_twenty_minutes(self):
+        values = create_config({
+            "mode": "ap",
+            "ap": {
+                "ssid": "Pico_Science_01",
+                "network": {
+                    "ip": "192.168.4.1",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.4.1",
+                    "dns": "8.8.8.8",
+                },
+            },
+        })
+        values["measurement"] = {"max_duration_minutes": 21}
+
+        with self.assertRaisesRegex(ValueError, "measurement.max_duration_minutes"):
+            AppConfig.from_dict(values)
 
     def test_uses_default_access_point_channel_when_missing(self):
         config = AppConfig.from_dict(create_config({

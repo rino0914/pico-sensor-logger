@@ -1,6 +1,10 @@
 from array import array
 
-MAX_ARRAY_SIZE = 200
+SCD40_SAMPLE_INTERVAL_SECONDS = 5
+CHART_RETENTION_MINUTES = 10
+MAX_ARRAY_SIZE = (
+    CHART_RETENTION_MINUTES * 60 // SCD40_SAMPLE_INTERVAL_SECONDS
+)
 
 
 # @brief CO2, 습도, 온도 측정값을 고정 크기 원형 버퍼에 저장하고 통계 계산

@@ -12,7 +12,7 @@ class DashboardPageRenderer:
 
     def render(self, payload):
         snapshot = payload["data_snapshot"]
-        charts = [self._render_chart_shell(chart) for chart in self.CHARTS]
+        latest_cards = [self._render_latest_card(chart) for chart in self.CHARTS]
         comparison_chart = self._render_comparison_shell()
 
         sensing = snapshot.sensing_enabled
@@ -37,6 +37,7 @@ class DashboardPageRenderer:
 <html lang=\"ko\"><head><meta charset=\"utf-8\">
 <meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">
 <title>PTL 환경 탐구 대시보드</title><style>
+.metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:25px}.metric-card{position:relative;overflow:hidden;padding:16px}.metric-card:after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(110deg,transparent 30%%,rgba(255,255,255,.018),transparent 70%%)}
 :root{color-scheme:dark;--bg:#050a0c;--surface:#0b1417;--card:#0d191c;--line:rgba(148,190,196,.14);--muted:#82979b;--text:#eef8f7;--cyan:#22d3c5;--cyan-soft:rgba(34,211,197,.12);--red:#fb7185}
 *{box-sizing:border-box}html{background:var(--bg)}body{min-height:100vh;margin:0;background:radial-gradient(circle at 50%% -10%%,rgba(25,151,145,.18),transparent 38%%),linear-gradient(180deg,#061013 0,#050a0c 55%%);color:var(--text);font:15px ui-sans-serif,system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
 body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.32;background-image:linear-gradient(rgba(74,222,202,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(74,222,202,.025) 1px,transparent 1px);background-size:32px 32px;mask-image:linear-gradient(to bottom,black,transparent 72%%)}
@@ -48,12 +49,13 @@ main{position:relative;display:flex;flex-direction:column;max-width:1160px;margi
 .controls{order:-1;margin:0 0 22px;padding:16px}.controls-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:13px}.controls-head h2{margin:3px 0 0;font-size:16px}.controls-head p{margin:3px 0 0;color:var(--muted);font-size:10px}.actions{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}.actions form{display:flex;margin:0}.actions button,.button{display:flex;align-items:center;justify-content:center;gap:7px;width:100%%;min-height:43px;padding:10px 12px;border:1px solid transparent;border-radius:11px;background:linear-gradient(135deg,#0eaa9e,#087f79);box-shadow:0 8px 22px rgba(14,170,158,.16);color:#f3fffd;font:inherit;font-size:12px;font-weight:750;text-align:center;text-decoration:none;cursor:pointer}.step-number{display:inline-flex;align-items:center;justify-content:center;flex:none;width:20px;height:20px;border:1px solid rgba(255,255,255,.22);border-radius:50%%;background:rgba(255,255,255,.09);font-size:10px;font-weight:850}.actions .secondary{border-color:var(--line);background:#122326;box-shadow:none;color:#c1d0d1}.actions .danger{border-color:rgba(251,113,133,.2);background:rgba(122,37,52,.44);box-shadow:none;color:#fecdd3}.meta{display:flex;flex-wrap:wrap;gap:8px 16px;margin:13px 2px 0;color:#6f8588;font-size:10px}.meta span:before{content:"•";margin-right:6px;color:#2a7772}
 @media(max-width:820px){.chart-grid{grid-template-columns:1fr}.chart-card{padding:18px 18px 14px}.actions{grid-template-columns:repeat(2,1fr)}.actions form:first-child{grid-column:span 2}.actions form:last-child{grid-column:span 2}}
 @media(max-width:560px){main{padding:22px 14px calc(24px + env(safe-area-inset-bottom))}.topbar{margin-bottom:18px}.subtitle{max-width:210px}.header-side{gap:7px}.device-clock strong{font-size:11px}.badge{padding:8px 10px}.status-panel{grid-template-columns:1fr;gap:9px;margin-bottom:22px}.experiment-state{padding:15px 16px}.quick-stats{padding:6px}.quick-item{padding:7px 8px}.network-panel{display:block;margin-top:-10px;padding:14px}.network-items{margin-top:12px}.network-item{padding:2px 9px}.network-item:first-child{border-left:0;padding-left:0}.section-head{align-items:center}.chart-grid{gap:11px}.card{border-radius:16px}.metric-value{font-size:38px}.controls{padding:13px}.controls-head{display:block}.actions{gap:8px}.actions button,.button{min-height:46px}.meta{padding:0 2px}}
+@media(max-width:560px){.metric-grid{gap:7px}.metric-card{padding:10px}.metric-card .metric-subtitle{display:none}.metric-card .metric-value{font-size:24px}}
 </style></head><body><main>
 <header class=\"topbar\"><div><p class=\"lab-mark\">PTL SCIENCE LAB</p><h1>무선센서 측정 실험</h1><p class=\"subtitle\">CO₂와 온·습도의 변화를 실시간으로 관찰합니다.</p></div><div class=\"header-side\"><div class=\"device-clock\"><span>DEVICE TIME</span><strong id=\"device-time\">%s</strong></div><span id=\"sensing-badge\" class=\"badge %s\">%s</span></div></header>
-<section class=\"status-panel\"><div class=\"experiment-state\"><span class=\"overline\">EXPERIMENT STATUS</span><strong>%s</strong></div><div class=\"quick-stats\"><div class=\"quick-item\"><span>표본</span><strong id=\"sample-count\">%d회</strong></div><div class=\"quick-item\"><span>데이터</span><strong id=\"data-freshness\">%s</strong></div><div class=\"quick-item\"><span>시각 동기화</span><strong id=\"time-state\">%s</strong></div><div class=\"quick-item\"><span>측정시간</span><strong id=\"runtime\">%s</strong></div></div></section>
+<section class=\"status-panel\"><div class=\"experiment-state\"><span class=\"overline\">EXPERIMENT STATUS</span><strong id=\"experiment-status\">%s</strong></div><div class=\"quick-stats\"><div class=\"quick-item\"><span>표본</span><strong id=\"sample-count\">%d회</strong></div><div class=\"quick-item\"><span>데이터</span><strong id=\"data-freshness\">%s</strong></div><div class=\"quick-item\"><span>시각 동기화</span><strong id=\"time-state\">%s</strong></div><div class=\"quick-item\"><span>측정시간</span><strong id=\"runtime\">%s</strong></div></div></section>
 <section class=\"card network-panel\"><div class=\"network-title\"><span class=\"overline\">NETWORK STATUS</span><strong>%s</strong></div><div class=\"network-items\"><div class=\"network-item\"><span>SSID</span><strong>%s</strong></div><div class=\"network-item\"><span>IP 주소</span><strong>%s</strong></div><div class=\"network-item\"><span>상태</span><strong>%s</strong></div></div></section>
-<div class=\"section-head\"><div><span class=\"overline\">RELATIVE TREND</span><h2>측정값 변화율 비교</h2></div><p>각 센서의 최초 측정값을 기준으로 변화율을 비교합니다.</p></div>%s
-<div class=\"section-head\"><div><span class=\"overline\">ABSOLUTE MEASUREMENTS</span><h2>측정 타입별 그래프</h2></div><p>CO₂, 온도, 습도의 실제 측정값과 시간에 따른 변화를 확인합니다.</p></div><section class=\"chart-grid\">%s</section>
+<div class=\"section-head\"><div><span class=\"overline\">LATEST MEASUREMENTS</span><h2>현재 측정값</h2></div><p>가장 최근의 CO₂, 온도, 습도입니다.</p></div><section class=\"metric-grid\">%s</section>
+<div class=\"section-head\"><div><span class=\"overline\">RELATIVE TREND</span><h2>측정값 변화율 비교</h2></div><p>최근 10분 동안 최초 측정값 대비 변화율을 비교합니다.</p></div>%s
 <section class=\"card controls\"><div class=\"controls-head\"><div><span class=\"overline\">EXPERIMENT CONTROL</span><h2>실험 제어</h2></div><p>시간 동기화부터 데이터 초기화까지 순서대로 진행하세요.</p></div><div class=\"actions\">
 <button type=\"button\" class=\"secondary\" onclick=\"syncTime()\"><span class=\"step-number\">1</span><span>시간 동기화</span></button>
 <form method=\"post\" action=\"/sensing_on\"><button><span class=\"step-number\">2</span><span>측정 시작</span></button></form>
@@ -70,7 +72,7 @@ function syncTime(){var d=new Date(),q=['year='+d.getFullYear(),'month='+(d.getM
             current_time, status_class, "측정 중" if sensing else "측정 중지",
             self._escape(payload["status_text"]), sample_count, freshness,
             time_state, runtime_text, network_mode, network_ssid, network_ip, network_status,
-            comparison_chart, "".join(charts), csv_name, freshness, time_state,
+            "".join(latest_cards), comparison_chart, csv_name, freshness, time_state,
             payload["pending_count"], snapshot.dropped_count,
             chart_bootstrap_script,
             CHART_CLIENT_SCRIPT,
@@ -115,17 +117,15 @@ function syncTime(){var d=new Date(),q=['year='+d.getFullYear(),'month='+(d.getM
             raise ValueError("Dashboard template value count mismatch")
 
     @staticmethod
-    def _render_chart_shell(chart):
+    def _render_latest_card(chart):
         index, title, subtitle, unit, _, color = chart
         key = ("co2", "temperature", "humidity")[index]
-        return """<article class=\"card chart-card\" style=\"--accent:%s\"><div class=\"chart-title\"><div><div class=\"metric-name\"><span class=\"metric-dot\"></span><h3>%s</h3></div><p class=\"metric-subtitle\">%s</p></div></div><div class=\"metric-value\"><span data-latest=\"%s\">--</span> <span class=\"unit\">%s</span></div><div class=\"chart-plot\"><svg data-chart=\"%s\" viewBox=\"0 0 520 370\" role=\"img\" aria-label=\"%s 대화형 시간 변화 그래프\"></svg><div class=\"chart-tooltip\" hidden></div></div></article>""" % (
+        return """<article class=\"card metric-card\" style=\"--accent:%s\"><div class=\"metric-name\"><span class=\"metric-dot\"></span><h3>%s</h3></div><p class=\"metric-subtitle\">%s</p><div class=\"metric-value\"><span data-latest=\"%s\">--</span> <span class=\"unit\">%s</span></div></article>""" % (
             color,
             title,
             subtitle,
             key,
             unit,
-            key,
-            title,
         )
 
     @staticmethod

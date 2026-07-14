@@ -26,15 +26,27 @@ class FakeCsvWriter:
 
     def __init__(self):
         self.reset_called = False
+        self.full = False
+        self.records = 0
+        self.flush_error = None
 
     def pending_count(self):
         return 0
 
     def flush(self):
-        pass
+        if self.flush_error is not None:
+            raise self.flush_error
 
     def reset(self):
         self.reset_called = True
+        self.full = False
+        self.records = 0
+
+    def is_full(self):
+        return self.full
+
+    def record_count(self):
+        return self.records
 
     def send_to(self, client_socket):
         client_socket.sendall(b"timestamp,co2\n")
@@ -122,8 +134,15 @@ class WebServerTest(unittest.TestCase):
         self.assertIn(b"2026-07-12 09:30:45", response)
         self.assertIn("초기값 대비 변화율 (%)".encode("utf-8"), response)
         self.assertIn("측정 시간 (분:초, 최신값 기준)".encode("utf-8"), response)
-        self.assertIn("이산화탄소 농도 (ppm)".encode("utf-8"), response)
+        self.assertIn("현재 측정값".encode("utf-8"), response)
+        self.assertIn(b'data-latest="co2"', response)
+        self.assertIn(b'data-latest="temperature"', response)
+        self.assertIn(b'data-latest="humidity"', response)
         self.assertIn(b'data-chart="comparison"', response)
+        self.assertEqual(1, response.count(b'<svg data-chart="'))
+        self.assertNotIn(b'data-chart="co2"', response)
+        self.assertNotIn(b'data-chart="temperature"', response)
+        self.assertNotIn(b'data-chart="humidity"', response)
         self.assertIn(b'class="chart-tooltip"', response)
         self.assertIn(b"fetch(CHART_API", response)
         self.assertNotIn(b'http-equiv="refresh"', response)
@@ -168,7 +187,7 @@ class WebServerTest(unittest.TestCase):
             largest_chunk = max(largest_chunk, len(chunk))
 
         self.assertGreater(total_size, 20000)
-        self.assertLess(largest_chunk, 2048)
+        self.assertLessEqual(largest_chunk, 512)
 
     def test_reads_declared_body_length(self):
         client = FakeSocket(
@@ -199,6 +218,46 @@ class WebServerTest(unittest.TestCase):
         response = self.request("POST", "/sensing_on")
         self.assertIn(b"HTTP/1.1 303 See Other", response)
         self.assertTrue(self.connector.is_enabled())
+
+    def test_automatic_completion_stops_sensing_and_requires_reset(self):
+        self.time.synchronized = True
+        self.request("POST", "/sensing_on")
+        self.server.controller.max_duration_seconds = 0
+
+        self.server.process_pending()
+
+        self.assertFalse(self.connector.is_enabled())
+        self.assertFalse(self.server.led.enabled)
+        self.assertEqual("0분 측정 완료", self.server.controller.status_text)
+        self.assertFalse(self.server.controller.start_sensing())
+
+        self.server.controller.max_duration_seconds = 60
+        self.server.controller.delete_csv()
+
+        self.assertTrue(self.server.controller.start_sensing())
+
+    def test_full_csv_rejects_sensing_until_reset(self):
+        self.time.synchronized = True
+        self.csv.full = True
+
+        self.assertFalse(self.server.controller.start_sensing())
+        self.assertIn("데이터가 가득", self.server.controller.status_text)
+
+        self.server.controller.delete_csv()
+
+        self.assertTrue(self.server.controller.start_sensing())
+
+    def test_automatic_completion_still_stops_when_csv_flush_fails(self):
+        self.time.synchronized = True
+        self.request("POST", "/sensing_on")
+        self.server.controller.max_duration_seconds = 0
+        self.csv.flush_error = OSError("flash unavailable")
+
+        self.server.process_pending()
+
+        self.assertFalse(self.connector.is_enabled())
+        self.assertFalse(self.server.led.enabled)
+        self.assertEqual("0분 측정 완료", self.server.controller.status_text)
 
     def test_rejects_wrong_method(self):
         response = self.request("GET", "/delete_csv")

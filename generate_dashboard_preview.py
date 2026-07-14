@@ -63,9 +63,9 @@ def main():
             + ";"
         ),
     }
-    html = DashboardPageRenderer().render(payload)
+    html_parts = DashboardPageRenderer().render(payload)
     with open(OUTPUT_FILE, "w", encoding="utf-8") as preview_file:
-        preview_file.write(html)
+        preview_file.writelines(html_parts)
     print("Generated:", OUTPUT_FILE)
 
 

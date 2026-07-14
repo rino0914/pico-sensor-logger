@@ -22,6 +22,10 @@
     "grove_port": 2
   },
 
+  "measurement": {
+    "max_duration_minutes": 20
+  },
+
   "diagnostics": {
     "wifi_trace": false
   },

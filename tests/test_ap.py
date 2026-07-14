@@ -118,6 +118,16 @@ class AccessPointTest(unittest.TestCase):
         self.assertTrue(access_point._enable_trace())
         self.assertEqual(15, self.network.ap.config_values["trace"])
 
+    def test_explicitly_disables_trace_left_by_previous_soft_reboot(self):
+        self.network.ap.config_values["trace"] = 15
+        access_point = self.ap_module.AccessPoint(
+            "Pico_Science_01",
+            trace_enabled=False,
+        )
+
+        self.assertFalse(access_point._enable_trace())
+        self.assertEqual(0, self.network.ap.config_values["trace"])
+
 
 if __name__ == "__main__":
     unittest.main()

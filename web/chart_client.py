@@ -4,9 +4,9 @@ const CHART_REFRESH_MS=5000;
 const PLOT={left:76,right:500,top:16,bottom:300,width:424,height:284};
 const COLORS={co2:'#38bdf8',temperature:'#fb923c',humidity:'#34d399'};
 const DEFINITIONS={
-  co2:{label:'CO₂',unit:'ppm',axis:'이산화탄소 농도 (ppm)',minimumRange:200},
-  temperature:{label:'온도',unit:'°C',axis:'공기 온도 (°C)',minimumRange:4},
-  humidity:{label:'습도',unit:'%',axis:'상대습도 (%)',minimumRange:10}
+  co2:{label:'CO₂',unit:'ppm'},
+  temperature:{label:'온도',unit:'°C'},
+  humidity:{label:'습도',unit:'%'}
 };
 let chartData={time_offsets:[],co2:[],temperature:[],humidity:[]};
 
@@ -70,12 +70,11 @@ function updateText(id,value){const element=document.getElementById(id);if(eleme
 function updateDashboardStatus(){
   Object.keys(DEFINITIONS).forEach(key=>{const values=chartData[key],element=document.querySelector('[data-latest="'+key+'"]');if(element)element.textContent=values.length?formatValue(values[values.length-1]):'--'});
   const hasData=chartData.co2.length>0,freshness=!hasData?'측정값 없음':chartData.is_stale?'갱신 지연':chartData.age_ms==null?'측정값 없음':Math.floor(chartData.age_ms/1000)+'초 전',timeState=chartData.time_synchronized?'완료':'필요';
-  updateText('sample-count',chartData.co2.length+'회');updateText('data-freshness',freshness);updateText('meta-freshness',freshness);updateText('time-state',timeState);updateText('meta-time-state',timeState);updateText('runtime',formatRuntime(chartData.runtime_seconds));updateText('device-time',formatDeviceTime(chartData.current_time));updateText('pending-count',chartData.pending_count||0);updateText('dropped-count',chartData.dropped_count||0);
+  updateText('sample-count',chartData.co2.length+'회');updateText('data-freshness',freshness);updateText('meta-freshness',freshness);updateText('time-state',timeState);updateText('meta-time-state',timeState);updateText('runtime',formatRuntime(chartData.runtime_seconds));updateText('device-time',formatDeviceTime(chartData.current_time));updateText('pending-count',chartData.pending_count||0);updateText('dropped-count',chartData.dropped_count||0);updateText('experiment-status',chartData.status_text||'');
   const badge=document.getElementById('sensing-badge');if(badge){badge.className='badge '+(chartData.sensing_enabled?'running':'stopped');badge.textContent=chartData.sensing_enabled?'측정 중':'측정 중지'}
 }
 function renderAllCharts(){
   updateDashboardStatus();
-  Object.keys(DEFINITIONS).forEach(key=>{const d=DEFINITIONS[key],svg=document.querySelector('svg[data-chart="'+key+'"]');if(svg)renderChart(svg,[rawDataset(key)],d.minimumRange,d.axis)});
   const combined=Object.keys(DEFINITIONS).map(key=>{const dataset=rawDataset(key);dataset.plot=relativeChanges(dataset.raw);return dataset});
   const comparison=document.querySelector('svg[data-chart="comparison"]');if(comparison)renderChart(comparison,combined,10,'초기값 대비 변화율 (%)');
 }

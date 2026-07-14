@@ -19,6 +19,7 @@ AP_RESET_DELAY_MS = 1000
 AP_DHCP_READY_DELAY_MS = 1000
 DEFAULT_AP_CHANNEL = 1
 AP_STATUS_POLL_INTERVAL_MS = 2000
+CYW43_TRACE_NONE = 0
 CYW43_TRACE_ALL = 15
 
 
@@ -51,6 +52,9 @@ class AccessPoint:
 
     def start(self, led=None):
         # A MicroPython soft reboot may leave CYW43 AP/DHCP state active.
+        # Clear stale trace flags before the interface restart can emit packets.
+        self._enable_trace()
+
         # Force a full interface restart so clients can associate again.
         self.ap.active(False)
         sleep_ms(AP_RESET_DELAY_MS)
@@ -59,8 +63,6 @@ class AccessPoint:
 
         if not self.ap.active():
             raise RuntimeError("Failed to start access point")
-
-        self._enable_trace()
 
         if self.network_ifconfig is not None:
             self.ap.ifconfig(self.network_ifconfig)
@@ -87,13 +89,17 @@ class AccessPoint:
         self._log_station_changes(force=True)
 
     def _enable_trace(self):
-        if not self.trace_enabled:
-            return False
-
+        # trace_flags survives a MicroPython soft reboot in the shared CYW43
+        # state. Always write the requested value so false also clears a trace
+        # enabled by a previous run.
+        trace_flags = CYW43_TRACE_ALL if self.trace_enabled else CYW43_TRACE_NONE
         try:
-            self.ap.config(trace=CYW43_TRACE_ALL)
+            self.ap.config(trace=trace_flags)
         except Exception as error:
             print("[WARN] Low-level Wi-Fi tracing is unavailable:", error)
+            return False
+
+        if not self.trace_enabled:
             return False
 
         print("[WARN] Low-level Wi-Fi tracing is enabled.")

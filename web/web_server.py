@@ -47,8 +47,14 @@ class WebServer:
         host="0.0.0.0",
         port=80,
         network_info_provider=None,
+        measurement_max_duration_seconds=20 * 60,
     ):
-        self.controller = WebControlService(connector, time_service, csv_writer)
+        self.controller = WebControlService(
+            connector,
+            time_service,
+            csv_writer,
+            measurement_max_duration_seconds,
+        )
         self.page_renderer = DashboardPageRenderer()
         self.led = led
         self.network_info_provider = network_info_provider
@@ -66,6 +72,8 @@ class WebServer:
         self.tcp_server.stop()
 
     def process_pending(self):
+        if self.controller.process_pending():
+            self._set_led(False)
         return self.tcp_server.process_pending()
 
     def _build_routes(self):
@@ -291,10 +299,20 @@ class WebServer:
     ):
         # 렌더러와 인코더 모두 작은 조각만 만들어 Pico의 힙 사용량을 제한한다.
         yield self._send_headers(status_code, content_type, None)
+        buffer = bytearray()
         for text in text_parts:
-            for offset in range(0, len(text), HTTP_RESPONSE_CHUNK_SIZE):
-                chunk = text[offset:offset + HTTP_RESPONSE_CHUNK_SIZE]
-                yield chunk.encode("utf-8")
+            encoded = text.encode("utf-8")
+            offset = 0
+            while offset < len(encoded):
+                available = HTTP_RESPONSE_CHUNK_SIZE - len(buffer)
+                take = min(available, len(encoded) - offset)
+                buffer.extend(encoded[offset:offset + take])
+                offset += take
+                if len(buffer) == HTTP_RESPONSE_CHUNK_SIZE:
+                    yield bytes(buffer)
+                    buffer = bytearray()
+        if buffer:
+            yield bytes(buffer)
 
     def _get_network_info(self):
         if self.network_info_provider is None:
