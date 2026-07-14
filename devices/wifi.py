@@ -1,11 +1,13 @@
 from devices.ap import AccessPoint
+from devices.device_id import board_suffix
 from devices.station import Station
 
 
 def create_wifi(config):
     if config.wifi_mode == "ap":
+        ssid = config.wifi_ssid + board_suffix()
         return AccessPoint(
-            config.wifi_ssid,
+            ssid,
             config.wifi_ifconfig,
         )
 

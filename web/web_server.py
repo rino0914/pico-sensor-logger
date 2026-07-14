@@ -9,6 +9,8 @@ try:
 except ImportError:
     import json
 
+import gc
+
 from web.controller import WebControlService
 from web.page_renderer import DashboardPageRenderer
 from web.tcp import TcpServer
@@ -24,6 +26,7 @@ HTTP_HEADER_END = b"\r\n\r\n"
 HTTP_READ_CHUNK_SIZE = 512
 MAX_HTTP_HEADER_SIZE = 4096
 MAX_HTTP_BODY_SIZE = 4096
+HTTP_RESPONSE_CHUNK_SIZE = 512
 
 
 class HttpError(Exception):
@@ -108,6 +111,7 @@ class WebServer:
             self._try_send_error(client_socket, 500, "Internal Server Error")
         finally:
             client_socket.close()
+            gc.collect()
 
     @classmethod
     def _read_request(cls, client_socket):
@@ -205,10 +209,30 @@ class WebServer:
         self._send_redirect(client_socket, "/")
 
     def _send_page(self, client_socket):
+        gc.collect()
         payload = self.controller.dashboard_payload()
         payload["network_info"] = self._get_network_info()
         page = self.page_renderer.render(payload)
-        self._send_response(client_socket, 200, page, "text/html; charset=utf-8")
+        self._send_streaming_text_response(
+            client_socket,
+            200,
+            page,
+            "text/html; charset=utf-8",
+        )
+
+    def _send_streaming_text_response(
+        self,
+        client_socket,
+        status_code,
+        text,
+        content_type,
+    ):
+        # Connection-close framing avoids allocating a second full-size UTF-8
+        # copy of the dashboard page on memory-constrained MicroPython boards.
+        self._send_headers(client_socket, status_code, content_type, None)
+        for offset in range(0, len(text), HTTP_RESPONSE_CHUNK_SIZE):
+            chunk = text[offset:offset + HTTP_RESPONSE_CHUNK_SIZE]
+            client_socket.sendall(chunk.encode("utf-8"))
 
     def _get_network_info(self):
         if self.network_info_provider is None:

@@ -1,12 +1,12 @@
 import rp2
+from machine import I2C, Pin, SoftI2C
 from time import sleep
-from machine import I2C, Pin
 
 from config_loader import AppConfig
 from core.data_connector import DataConnector
 from core.ntp_client import NtpClient
 from core.time_service import TimeService
-from devices import scd40, scd40_thread
+from devices import grove, scd40, scd40_thread
 from devices.wifi import create_wifi
 from storage.filemanager import CsvWriter, FileHandler
 from web.web_server import WebServer
@@ -26,14 +26,50 @@ def create_csv_writer(config, connector):
     file_handler = FileHandler(config.logfile_filename)
     return CsvWriter(connector, file_handler, config.logfile_header)
 
-def create_sensor(connector, time_service):
-    i2c = I2C(
+def create_i2c(scl_pin, sda_pin):
+    if scd40.I2C_USE_SOFT:
+        return SoftI2C(
+            scl=Pin(scl_pin),
+            sda=Pin(sda_pin),
+            freq=scd40.I2C_FREQUENCY,
+        )
+    return I2C(
         scd40.I2C_BUS_ID,
-        scl  = Pin(scd40.SCD40_SCL_PIN),
-        sda  = Pin(scd40.SCD40_SDA_PIN),
-        freq = scd40.I2C_FREQUENCY,
+        scl=Pin(scl_pin),
+        sda=Pin(sda_pin),
+        freq=scd40.I2C_FREQUENCY,
     )
-    print("i2c_0 scan result:", i2c.scan())
+
+
+def scan_i2c(i2c, scl_pin, sda_pin):
+    scan_result = i2c.scan()
+    print(
+        "i2c scan result (scl=GP%s, sda=GP%s):" % (scl_pin, sda_pin),
+        scan_result,
+    )
+    return scan_result
+
+
+def create_sensor(config, connector, time_service):
+    port_number = config.sensor_grove_port
+    candidates = grove.grove_port_i2c_candidates(port_number)
+    i2c = None
+
+    for index, pins in enumerate(candidates):
+        if index > 0 and not scd40.I2C_AUTO_SWAP_PINS:
+            break
+        scl_pin, sda_pin = pins
+        candidate_i2c = create_i2c(scl_pin, sda_pin)
+        scan_result = scan_i2c(candidate_i2c, scl_pin, sda_pin)
+        if i2c is None:
+            i2c = candidate_i2c
+        if scan_result:
+            i2c = candidate_i2c
+            print(
+                "[INFO] Using Grove port %s for SCD40: scl=GP%s, sda=GP%s"
+                % (port_number, scl_pin, sda_pin)
+            )
+            break
 
     return scd40_thread.SCD40Thread(
         scd40.SCD40Device(i2c),
@@ -60,7 +96,7 @@ class PicoSenscorLoggerApp:
             led=self.status_led,
             network_info_provider=self.wifi,
         )
-        self.sensor = create_sensor(self.connector, self.time_service)
+        self.sensor = create_sensor(self.config, self.connector, self.time_service)
     
     def start(self):
         self.wifi.start(self.status_led)
@@ -124,6 +160,7 @@ class PicoSenscorLoggerApp:
             while True:
                 try:
                     self.web_server.process_pending()
+                    self.sensor.process_pending()
                     self._process_storage()
 
                     if rp2.bootsel_button():

@@ -65,6 +65,7 @@ class WebControlService:
             "age_ms": snapshot.age_ms,
             "is_stale": snapshot.is_stale,
             "sensing_enabled": snapshot.sensing_enabled,
+            "runtime_seconds": snapshot.runtime_seconds,
             "pending_count": snapshot.pending_count,
             "dropped_count": snapshot.dropped_count,
             "time_synchronized": time_synchronized,
@@ -80,6 +81,7 @@ class WebControlService:
 
     def synchronize_time(self, query):
         self.time_service.synchronize(*self._parse_time_values(query))
+        print("[CONTROL] Time synchronized:", self.time_service.now())
         if not self.connector.is_enabled():
             self._set_status(STATUS_TIME_SYNC)
 
@@ -96,9 +98,11 @@ class WebControlService:
             return True
         if not self.time_service.is_synchronized():
             self._set_status(STATUS_TIME_SYNC_REQUIRED)
+            print("[CONTROL] Sensing start rejected: time is not synchronized.")
             return False
         self.connector.start_sensing()
         self._set_status(STATUS_SENSING)
+        print("[CONTROL] Sensing enabled.")
         return True
 
     def stop_sensing(self):

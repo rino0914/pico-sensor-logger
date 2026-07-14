@@ -1,6 +1,6 @@
 from array import array
 
-MAX_ARRAY_SIZE   = 200
+MAX_ARRAY_SIZE = 200
 
 
 # @brief CO2, 습도, 온도 측정값을 고정 크기 원형 버퍼에 저장하고 통계 계산

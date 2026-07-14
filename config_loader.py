@@ -3,6 +3,9 @@ try:
 except ImportError:
     import json
 
+from devices.grove import DEFAULT_GROVE_PORT, normalize_i2c_grove_port
+from devices.device_id import DEFAULT_SUFFIX_LENGTH
+
 EXPECTED_CSV_FIELD_NAMES = ["timestamp", "CO2(ppm)", "temperature(°C)", "humidity(%)"]
 
 WIFI_MODE_AP = "ap"
@@ -22,6 +25,7 @@ class AppConfig:
         wifi_password,
         wifi_ifconfig,
         wifi_connect_timeout_seconds,
+        sensor_grove_port,
         logfile_filename,
         logfile_field_names,
     ):
@@ -30,6 +34,7 @@ class AppConfig:
         self.wifi_password = wifi_password
         self.wifi_ifconfig = wifi_ifconfig
         self.wifi_connect_timeout_seconds = wifi_connect_timeout_seconds
+        self.sensor_grove_port = sensor_grove_port
         self.logfile_filename = logfile_filename
         self.logfile_field_names = logfile_field_names
         
@@ -42,14 +47,32 @@ class AppConfig:
         values = cls._require_mapping(config,"config")
         wifi_values = cls._require_mapping(values.get("wifi"), "wifi")
         logfile_values = cls._require_mapping(values.get("logfile"), "logfile")
+        sensor_values = cls._require_mapping(
+            values.get("sensor", {}),
+            "sensor",
+        )
         wifi_mode = cls._normalize_wifi_mode(wifi_values.get("mode"))
         wifi_profile_path = "wifi.%s" % wifi_mode
         wifi_profile = cls._require_mapping(
             wifi_values.get(wifi_mode),
             wifi_profile_path,
         )
+        wifi_ssid = cls._normalize_ssid(
+            wifi_profile.get("ssid", ""),
+            "%s.ssid" % wifi_profile_path,
+        )
 
         if wifi_mode == WIFI_MODE_AP:
+            if len(wifi_ssid) + DEFAULT_SUFFIX_LENGTH > MAX_WIFI_SSID_LENGTH:
+                raise ValueError(
+                    "%s.ssid must not exceed %d characters because a %d-character "
+                    "device suffix is appended"
+                    % (
+                        wifi_profile_path,
+                        MAX_WIFI_SSID_LENGTH - DEFAULT_SUFFIX_LENGTH,
+                        DEFAULT_SUFFIX_LENGTH,
+                    )
+                )
             wifi_password = None
             wifi_ifconfig = cls._normalize_network_ifconfig(
                 wifi_profile.get("network"),
@@ -72,13 +95,14 @@ class AppConfig:
 
         return cls(
             wifi_mode=wifi_mode,
-            wifi_ssid=cls._normalize_ssid(
-                wifi_profile.get("ssid", ""),
-                "%s.ssid" % wifi_profile_path,
-            ),
+            wifi_ssid=wifi_ssid,
             wifi_password=wifi_password,
             wifi_ifconfig=wifi_ifconfig,
             wifi_connect_timeout_seconds=wifi_connect_timeout_seconds,
+            sensor_grove_port=normalize_i2c_grove_port(
+                sensor_values.get("grove_port", DEFAULT_GROVE_PORT),
+                "sensor.grove_port",
+            ),
             logfile_filename=cls._require_string(logfile_values.get("filename"), "logfile.filename"),
             logfile_field_names=cls._normalize_field_names(
                 logfile_values.get("field_names"),

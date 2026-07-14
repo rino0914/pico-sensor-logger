@@ -1,5 +1,60 @@
 # PTL Sensor Logger
 
+## 보드별 AP SSID
+
+AP 모드의 `wifi.ap.ssid`는 완성된 이름이 아니라 공통 접두사입니다.
+
+```json
+"ssid": "pico_science_"
+```
+
+실행할 때 `machine.unique_id()` 전체를 해시한 Base36 두 자리 접미사를
+자동으로 붙입니다. 같은 보드는 재부팅해도 같은 접미사를 사용합니다.
+
+```text
+pico_science_7k
+pico_science_m3
+```
+
+접미사는 AP 모드에만 적용되며 Station 모드의 공유기 SSID에는 적용되지
+않습니다. 접미사 두 자리를 포함한 최종 SSID는 32자를 넘을 수 없으므로
+설정의 AP 접두사는 최대 30자까지 허용됩니다.
+
+## SCD40 및 QWIIC 연결
+
+ROBO-PICO 보드에서 QWIIC / Stemma QT 커넥터는 `Maker Port`입니다.
+이 포트는 Grove 2번과 동일한 `GP2`, `GP3` 핀을 공유합니다. 따라서
+SCD40을 변환 케이블 없이 QWIIC 커넥터에 직접 연결할 때는 다음과 같이
+Grove 포트 2번을 설정합니다.
+
+```json
+"sensor": {
+  "grove_port": 2
+}
+```
+
+ROBO-PICO 데이터시트의 Grove 포트 GPIO 및 I2C 지원 여부는 다음과
+같습니다.
+
+| Grove 포트 | GPIO 핀 쌍 | 하드웨어 I2C | 참고 |
+|---|---|---|---|
+| 1 | GP0 / GP1 | I2C0 | Grove 단자 |
+| 2 | GP2 / GP3 | I2C1 | Maker/QWIIC 포트와 공유 |
+| 3 | GP4 / GP5 | I2C0 | Grove 단자 |
+| 4 | GP16 / GP17 | I2C0 | Grove 단자 |
+| 5 | GP6 / GP26 | 완전한 I2C 쌍이 아님 | SCD40 비권장 |
+| 6 | GP26 / GP27 | I2C1 | Grove 단자 |
+| 7 | GP7 / GP28 | 완전한 I2C 쌍이 아님 | SCD40 비권장 |
+
+변환 케이블이 없다면 QWIIC 센서를 물리적으로 연결할 수 있는 포트는
+Maker/QWIIC 포트 하나이며 설정값은 `2`입니다. Grove 1, 3, 4, 6번도
+I2C를 지원하지만 QWIIC 센서를 연결하려면 Grove-QWIIC 변환 케이블이
+필요합니다.
+
+여러 QWIIC 센서는 센서의 보조 QWIIC 단자 또는 QWIIC 허브로 같은
+버스에 연결할 수 있습니다. 이 경우 동일한 I2C 주소를 사용하는 장치끼리는
+주소 충돌이 발생할 수 있습니다. SCD40의 기본 I2C 주소는 `0x62`입니다.
+
 Raspberry Pi Pico W와 SCD40 센서를 이용해 교실의 CO₂, 온도, 습도를 측정하고 CSV로 저장하는 탐구·실험용 데이터 로거입니다.
 
 Pico W는 비밀번호 없는 액세스 포인트를 만들거나 기존 Wi-Fi에 Station으로 접속한 뒤 웹 서버를 실행합니다. 학생은 스마트폰으로 실시간 측정값과 그래프를 확인하고, 측정을 제어하거나 CSV 파일을 내려받을 수 있습니다.
@@ -56,7 +111,7 @@ SCD40의 기본 I²C 주소는 `0x62`입니다.
   "wifi": {
     "mode": "ap",
     "ap": {
-      "ssid": "Pico_Science_01",
+      "ssid": "pico_science_",
       "network": {
         "ip": "192.168.4.1",
         "netmask": "255.255.255.0",
@@ -69,6 +124,9 @@ SCD40의 기본 I²C 주소는 `0x62`입니다.
       "password": "wifi-password",
       "connect_timeout_seconds": 15
     }
+  },
+  "sensor": {
+    "grove_port": 2
   },
   "logfile": {
     "filename": "data-SCD40-1.csv",
@@ -182,7 +240,7 @@ python3 generate_dashboard_preview.py
 프로젝트 루트에서 전체 테스트를 실행합니다.
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -B run_tests.py
 ```
 
 macOS에서 Python 캐시 권한 오류가 발생하면 임시 캐시 경로를 지정할 수 있습니다.

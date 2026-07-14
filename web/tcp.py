@@ -2,6 +2,7 @@ import socket
 
 
 CLIENT_TIMEOUT_SECONDS = 1.0
+EMPTY_POLL_LOG_INTERVAL = 200
 
 # @brief TCP 서버 클래스
 class TcpServer:
@@ -17,6 +18,7 @@ class TcpServer:
         self.port = port
         self.backlog = backlog
         self.socket = None
+        self._empty_poll_count = 0
 
     # @brief TCP 서버를 초기화하고 시작
     def start(self):
@@ -44,6 +46,7 @@ class TcpServer:
             raise
 
         self.socket = server_socket
+        self._empty_poll_count = 0
         print("TCP server listening on %s:%d" % (self.host, self.port))
 
     def stop(self):
@@ -61,9 +64,14 @@ class TcpServer:
         try:
             client_socket, client_address = self.socket.accept()
         except OSError:
+            self._empty_poll_count += 1
+            if self._empty_poll_count >= EMPTY_POLL_LOG_INTERVAL:
+                print("[DEBUG] TCP server polling; no pending client connection.")
+                self._empty_poll_count = 0
             return False
 
         try:
+            self._empty_poll_count = 0
             client_socket.setblocking(True)
             client_socket.settimeout(CLIENT_TIMEOUT_SECONDS)
             print("TCP client connected:", client_address)

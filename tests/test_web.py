@@ -128,7 +128,8 @@ class WebServerTest(unittest.TestCase):
     def test_dashboard_shows_time_sync_required_before_synchronization(self):
         response = self.request("GET", "/")
 
-        self.assertIn("동기화 필요".encode("utf-8"), response)
+        self.assertIn("시각 동기화".encode("utf-8"), response)
+        self.assertIn(">필요<".encode("utf-8"), response)
 
     def test_time_sync_accepts_declared_query(self):
         response = self.request(
@@ -211,6 +212,8 @@ class WebServerTest(unittest.TestCase):
             payload["latest_timestamp"],
         )
         self.assertTrue(payload["sensing_enabled"])
+        self.assertIn("runtime_seconds", payload)
+        self.assertGreaterEqual(payload["runtime_seconds"], 0)
         self.assertEqual(
             [2026, 7, 12, 6, 9, 30, 45, 0],
             payload["current_time"],

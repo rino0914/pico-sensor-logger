@@ -29,6 +29,7 @@ class DataSnapshot:
         pending_count,
         dropped_count,
         sensing_enabled,
+        runtime_seconds,
     ):
         self.series = series
         self.time_offsets = time_offsets
@@ -38,6 +39,7 @@ class DataSnapshot:
         self.pending_count = pending_count
         self.dropped_count = dropped_count
         self.sensing_enabled = sensing_enabled
+        self.runtime_seconds = runtime_seconds
 
 class _PendingWriteQueue:
     def __init__(self, queue_size):
@@ -86,8 +88,11 @@ class _MesurementRunTimeState:
         self._sensing_enabled = False
         self._latest_timestamp = None
         self._last_publish_ticks = None
+        self._experiment_start_ticks = None
         
     def start_sensing(self):
+        if self._experiment_start_ticks is None:
+            self._experiment_start_ticks = ticks_ms()
         self._sensing_enabled = True
     def stop_sensing(self):
         self._sensing_enabled = False
@@ -104,15 +109,23 @@ class _MesurementRunTimeState:
         dropped_count,
         state_after_ms,
     ):
+        current_ticks = ticks_ms()
         if self._last_publish_ticks is None:
             age_ms = None
             is_stale = True
         else:
             age_ms = ticks_diff(
-                ticks_ms(),
+                current_ticks,
                 self._last_publish_ticks,
             )
             is_stale = age_ms > state_after_ms
+
+        runtime_seconds = 0
+        if self._experiment_start_ticks is not None:
+            runtime_seconds = max(
+                0,
+                ticks_diff(current_ticks, self._experiment_start_ticks) // 1000,
+            )
 
         return DataSnapshot(
             series=series,
@@ -123,11 +136,13 @@ class _MesurementRunTimeState:
             pending_count=pending_count,
             dropped_count=dropped_count,
             sensing_enabled=self._sensing_enabled,
+            runtime_seconds=runtime_seconds,
         )
         
     def clear(self):
         self._latest_timestamp = None
         self._last_publish_ticks = None
+        self._experiment_start_ticks = None
 class DataConnector:
 
     def __init__(self, queue_size=DEFAULT_QUEUE_SIZE):

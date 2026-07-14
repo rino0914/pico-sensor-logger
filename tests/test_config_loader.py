@@ -6,6 +6,9 @@ from config_loader import AppConfig
 def create_config(wifi):
     return {
         "wifi": wifi,
+        "sensor": {
+            "grove_port": 2,
+        },
         "logfile": {
             "filename": "measurements.csv",
             "field_names": [
@@ -41,6 +44,81 @@ class AppConfigTest(unittest.TestCase):
         self.assertIsNone(config.wifi_password)
         self.assertEqual("192.168.4.1", config.wifi_ifconfig[0])
         self.assertIsNone(config.wifi_connect_timeout_seconds)
+        self.assertEqual(2, config.sensor_grove_port)
+
+    def test_uses_default_grove_port_when_sensor_setting_is_missing(self):
+        values = create_config({
+            "mode": "ap",
+            "ap": {
+                "ssid": "Pico_Science_01",
+                "network": {
+                    "ip": "192.168.4.1",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.4.1",
+                    "dns": "8.8.8.8",
+                },
+            },
+        })
+        del values["sensor"]
+
+        config = AppConfig.from_dict(values)
+
+        self.assertEqual(2, config.sensor_grove_port)
+
+    def test_rejects_unknown_grove_port(self):
+        values = create_config({
+            "mode": "ap",
+            "ap": {
+                "ssid": "Pico_Science_01",
+                "network": {
+                    "ip": "192.168.4.1",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.4.1",
+                    "dns": "8.8.8.8",
+                },
+            },
+        })
+        values["sensor"]["grove_port"] = 99
+
+        with self.assertRaisesRegex(ValueError, "sensor.grove_port"):
+            AppConfig.from_dict(values)
+
+    def test_accepts_another_defined_grove_port(self):
+        values = create_config({
+            "mode": "ap",
+            "ap": {
+                "ssid": "Pico_Science_01",
+                "network": {
+                    "ip": "192.168.4.1",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.4.1",
+                    "dns": "8.8.8.8",
+                },
+            },
+        })
+        values["sensor"]["grove_port"] = 1
+
+        config = AppConfig.from_dict(values)
+
+        self.assertEqual(1, config.sensor_grove_port)
+
+    def test_rejects_grove_port_without_i2c_pair(self):
+        values = create_config({
+            "mode": "ap",
+            "ap": {
+                "ssid": "Pico_Science_01",
+                "network": {
+                    "ip": "192.168.4.1",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.4.1",
+                    "dns": "8.8.8.8",
+                },
+            },
+        })
+        values["sensor"]["grove_port"] = 7
+
+        with self.assertRaisesRegex(ValueError, "must support I2C"):
+            AppConfig.from_dict(values)
 
     def test_loads_station_mode(self):
         config = AppConfig.from_dict(create_config({
@@ -75,6 +153,23 @@ class AppConfigTest(unittest.TestCase):
             AppConfig.from_dict(create_config({
                 "mode": "unknown",
             }))
+
+    def test_rejects_ap_ssid_prefix_that_has_no_room_for_suffix(self):
+        values = create_config({
+            "mode": "ap",
+            "ap": {
+                "ssid": "x" * 31,
+                "network": {
+                    "ip": "192.168.4.1",
+                    "netmask": "255.255.255.0",
+                    "gateway": "192.168.4.1",
+                    "dns": "8.8.8.8",
+                },
+            },
+        })
+
+        with self.assertRaisesRegex(ValueError, "device suffix"):
+            AppConfig.from_dict(values)
 
     def test_does_not_validate_inactive_station_profile(self):
         config = AppConfig.from_dict(create_config({

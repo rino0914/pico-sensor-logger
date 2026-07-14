@@ -24,6 +24,7 @@ class PreviewSnapshot:
         self.pending_count = 3
         self.dropped_count = 0
         self.sensing_enabled = True
+        self.runtime_seconds = 754
 
 
 def main():
@@ -37,6 +38,7 @@ def main():
         "age_ms": snapshot.age_ms,
         "is_stale": snapshot.is_stale,
         "sensing_enabled": snapshot.sensing_enabled,
+        "runtime_seconds": snapshot.runtime_seconds,
         "pending_count": snapshot.pending_count,
         "dropped_count": snapshot.dropped_count,
         "time_synchronized": True,

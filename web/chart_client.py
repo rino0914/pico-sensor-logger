@@ -64,12 +64,13 @@ function attachPointer(svg,datasets,x,scale,times){
   svg.onpointermove=show;svg.onpointerdown=show;svg.onpointerleave=hide;
 }
 function rawDataset(key){const definition=DEFINITIONS[key];return{label:definition.label,unit:definition.unit,color:COLORS[key],raw:chartData[key],plot:chartData[key]}}
-function formatDeviceTime(value){if(!value)return'동기화 필요';return String(value[0]).padStart(4,'0')+'-'+String(value[1]).padStart(2,'0')+'-'+String(value[2]).padStart(2,'0')+' '+String(value[4]).padStart(2,'0')+':'+String(value[5]).padStart(2,'0')+':'+String(value[6]).padStart(2,'0')}
+function formatDeviceTime(value){if(!value)return'--';return String(value[0]).padStart(4,'0')+'-'+String(value[1]).padStart(2,'0')+'-'+String(value[2]).padStart(2,'0')+' '+String(value[4]).padStart(2,'0')+':'+String(value[5]).padStart(2,'0')+':'+String(value[6]).padStart(2,'0')}
+function formatRuntime(totalSeconds){const value=Math.max(0,Math.floor(Number(totalSeconds)||0)),minutes=Math.floor(value/60),seconds=value%60;return String(minutes).padStart(2,'0')+':'+String(seconds).padStart(2,'0')}
 function updateText(id,value){const element=document.getElementById(id);if(element)element.textContent=value}
 function updateDashboardStatus(){
   Object.keys(DEFINITIONS).forEach(key=>{const values=chartData[key],element=document.querySelector('[data-latest="'+key+'"]');if(element)element.textContent=values.length?formatValue(values[values.length-1]):'--'});
-  const hasData=chartData.co2.length>0,freshness=!hasData?'측정값 없음':chartData.is_stale?'갱신 지연':chartData.age_ms==null?'측정값 없음':Math.floor(chartData.age_ms/1000)+'초 전',timeState=chartData.time_synchronized?'동기화됨':'동기화 필요';
-  updateText('sample-count',chartData.co2.length+'회');updateText('data-freshness',freshness);updateText('meta-freshness',freshness);updateText('time-state',timeState);updateText('meta-time-state',timeState);updateText('device-time',formatDeviceTime(chartData.current_time));updateText('pending-count',chartData.pending_count||0);updateText('dropped-count',chartData.dropped_count||0);
+  const hasData=chartData.co2.length>0,freshness=!hasData?'측정값 없음':chartData.is_stale?'갱신 지연':chartData.age_ms==null?'측정값 없음':Math.floor(chartData.age_ms/1000)+'초 전',timeState=chartData.time_synchronized?'완료':'필요';
+  updateText('sample-count',chartData.co2.length+'회');updateText('data-freshness',freshness);updateText('meta-freshness',freshness);updateText('time-state',timeState);updateText('meta-time-state',timeState);updateText('runtime',formatRuntime(chartData.runtime_seconds));updateText('device-time',formatDeviceTime(chartData.current_time));updateText('pending-count',chartData.pending_count||0);updateText('dropped-count',chartData.dropped_count||0);
   const badge=document.getElementById('sensing-badge');if(badge){badge.className='badge '+(chartData.sensing_enabled?'running':'stopped');badge.textContent=chartData.sensing_enabled?'측정 중':'측정 중지'}
 }
 function renderAllCharts(){
