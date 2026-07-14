@@ -33,7 +33,7 @@ class DashboardPageRenderer:
         network_status = "활성" if network["connected"] else "비활성"
         chart_bootstrap_script = payload.get("chart_bootstrap_script", "")
 
-        return """<!doctype html>
+        template = """<!doctype html>
 <html lang=\"ko\"><head><meta charset=\"utf-8\">
 <meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">
 <title>PTL 환경 탐구 대시보드</title><style>
@@ -65,7 +65,8 @@ main{position:relative;display:flex;flex-direction:column;max-width:1160px;margi
 function syncTime(){var d=new Date(),q=['year='+d.getFullYear(),'month='+(d.getMonth()+1),'day='+d.getDate(),'weekday='+d.getDay(),'hour='+d.getHours(),'minute='+d.getMinutes(),'second='+d.getSeconds()].join('&');fetch('/set_time?'+q,{method:'POST'}).then(function(r){if(!r.ok)throw Error();location.reload()}).catch(function(){alert('시간 동기화에 실패했습니다.')})}
 %s
 %s
-</script></body></html>""" % (
+</script></body></html>"""
+        values = (
             current_time, status_class, "측정 중" if sensing else "측정 중지",
             self._escape(payload["status_text"]), sample_count, freshness,
             time_state, runtime_text, network_mode, network_ssid, network_ip, network_status,
@@ -74,6 +75,44 @@ function syncTime(){var d=new Date(),q=['year='+d.getFullYear(),'month='+(d.getM
             chart_bootstrap_script,
             CHART_CLIENT_SCRIPT,
         )
+        return self._iter_format(template, values)
+
+    @staticmethod
+    def _iter_format(template, values, chunk_size=512):
+        """큰 HTML 결과 문자열을 만들지 않고 %-template을 조각별로 치환한다."""
+        value_index = 0
+        literal_start = 0
+        cursor = 0
+
+        while cursor < len(template):
+            marker = template.find("%", cursor)
+            if marker < 0:
+                for offset in range(literal_start, len(template), chunk_size):
+                    yield template[offset:offset + chunk_size]
+                break
+
+            specifier = template[marker + 1:marker + 2]
+            if specifier not in ("%", "s", "d"):
+                cursor = marker + 1
+                continue
+
+            for offset in range(literal_start, marker, chunk_size):
+                yield template[offset:min(offset + chunk_size, marker)]
+
+            if specifier == "%":
+                yield "%"
+            else:
+                value = values[value_index]
+                value_index += 1
+                text = str(value)
+                for offset in range(0, len(text), chunk_size):
+                    yield text[offset:offset + chunk_size]
+
+            cursor = marker + 2
+            literal_start = cursor
+
+        if value_index != len(values):
+            raise ValueError("Dashboard template value count mismatch")
 
     @staticmethod
     def _render_chart_shell(chart):

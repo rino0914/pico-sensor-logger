@@ -276,25 +276,25 @@ class WebServer:
         gc.collect()
         payload = self.controller.dashboard_payload()
         payload["network_info"] = self._get_network_info()
-        page = self.page_renderer.render(payload)
+        page_parts = self.page_renderer.render(payload)
         return self._send_streaming_text_response(
             200,
-            page,
+            page_parts,
             "text/html; charset=utf-8",
         )
 
     def _send_streaming_text_response(
         self,
         status_code,
-        text,
+        text_parts,
         content_type,
     ):
-        # Connection-close framing avoids allocating a second full-size UTF-8
-        # copy of the dashboard page on memory-constrained MicroPython boards.
+        # 렌더러와 인코더 모두 작은 조각만 만들어 Pico의 힙 사용량을 제한한다.
         yield self._send_headers(status_code, content_type, None)
-        for offset in range(0, len(text), HTTP_RESPONSE_CHUNK_SIZE):
-            chunk = text[offset:offset + HTTP_RESPONSE_CHUNK_SIZE]
-            yield chunk.encode("utf-8")
+        for text in text_parts:
+            for offset in range(0, len(text), HTTP_RESPONSE_CHUNK_SIZE):
+                chunk = text[offset:offset + HTTP_RESPONSE_CHUNK_SIZE]
+                yield chunk.encode("utf-8")
 
     def _get_network_info(self):
         if self.network_info_provider is None:

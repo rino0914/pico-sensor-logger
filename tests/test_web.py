@@ -157,6 +157,19 @@ class WebServerTest(unittest.TestCase):
         )
         self.assertIn(b"HTTP/1.1 200 OK", b"".join(response))
 
+    def test_dashboard_response_is_generated_in_small_chunks(self):
+        response = self.server.build_response(
+            b"GET / HTTP/1.1\r\nHost: logger\r\n\r\n"
+        )
+        total_size = 0
+        largest_chunk = 0
+        for chunk in response:
+            total_size += len(chunk)
+            largest_chunk = max(largest_chunk, len(chunk))
+
+        self.assertGreater(total_size, 20000)
+        self.assertLess(largest_chunk, 2048)
+
     def test_reads_declared_body_length(self):
         client = FakeSocket(
             "POST /sensing_off HTTP/1.1\r\n"
