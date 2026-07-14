@@ -117,6 +117,9 @@ class WebControlService:
     def send_csv(self, client_socket):
         self.csv_writer.send_to(client_socket)
 
+    def iter_csv_chunks(self, chunk_size=512):
+        return self.csv_writer.iter_chunks(chunk_size)
+
     @staticmethod
     def _parse_time_values(query):
         required = (

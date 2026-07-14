@@ -39,6 +39,9 @@ class FakeCsvWriter:
     def send_to(self, client_socket):
         client_socket.sendall(b"timestamp,co2\n")
 
+    def iter_chunks(self, chunk_size=512):
+        return iter((b"timestamp,co2\n",))
+
 
 class FakeLed:
     def on(self):
@@ -146,6 +149,13 @@ class WebServerTest(unittest.TestCase):
         )
         self.server.handle_request(client)
         self.assertIn(b"HTTP/1.1 200 OK", client.response)
+
+    def test_response_builder_waits_for_complete_headers(self):
+        self.assertIsNone(self.server.build_response(b"GET / HTTP/1.1\r\n"))
+        response = self.server.build_response(
+            b"GET / HTTP/1.1\r\nHost: logger\r\n\r\n"
+        )
+        self.assertIn(b"HTTP/1.1 200 OK", b"".join(response))
 
     def test_reads_declared_body_length(self):
         client = FakeSocket(

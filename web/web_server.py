@@ -52,7 +52,7 @@ class WebServer:
         self.page_renderer = DashboardPageRenderer()
         self.led = led
         self.network_info_provider = network_info_provider
-        self.tcp_server = TcpServer(self.handle_request, host=host, port=port)
+        self.tcp_server = TcpServer(self.build_response, host=host, port=port)
         self._routes = self._build_routes()
 
     @property
@@ -80,38 +80,103 @@ class WebServer:
         }
 
     def handle_request(self, client_socket):
+        """블로킹 소켓 기반 호출과 기존 테스트를 위한 호환 진입점."""
         try:
             raw_request = self._read_request(client_socket)
-            if not raw_request:
-                return
+            response = self.build_response(raw_request)
+            if response is not None:
+                for chunk in response:
+                    client_socket.sendall(chunk)
+        except HttpError as error:
+            print("HTTP request rejected:", error.message)
+            for chunk in self._send_response(
+                error.status_code,
+                error.message,
+                headers=error.headers,
+            ):
+                client_socket.sendall(chunk)
+        except ValueError as error:
+            print("HTTP request rejected:", error)
+            for chunk in self._send_response(400, str(error)):
+                client_socket.sendall(chunk)
+        except Exception as error:
+            print("HTTP request failed:", error)
+            try:
+                for chunk in self._send_response(500, "Internal Server Error"):
+                    client_socket.sendall(chunk)
+            except Exception as send_error:
+                print("HTTP error response failed:", send_error)
+        finally:
+            client_socket.close()
+            gc.collect()
+
+    def build_response(self, raw_request):
+        """완성된 요청에는 응답 iterable, 미완성 요청에는 None을 반환한다."""
+        try:
+            raw_request = self._extract_complete_request(raw_request)
+            if raw_request is None:
+                return None
+
             method, request_path, query = self._parse_request(raw_request)
             print("HTTP request:", method, request_path)
 
             if request_path == "/" + self.csv_file_name:
                 if method != "GET":
                     raise HttpError(405, "Method Not Allowed", {"Allow": "GET"})
-                self._send_csv(client_socket)
-                return
-
-            methods = self._routes.get(request_path)
-            if methods is None:
-                raise HttpError(404, "Not Found")
-            handler = methods.get(method)
-            if handler is None:
-                raise HttpError(405, "Method Not Allowed", {"Allow": ", ".join(methods)})
-            handler(client_socket, query)
+                response = self._send_csv()
+            else:
+                methods = self._routes.get(request_path)
+                if methods is None:
+                    raise HttpError(404, "Not Found")
+                handler = methods.get(method)
+                if handler is None:
+                    raise HttpError(
+                        405,
+                        "Method Not Allowed",
+                        {"Allow": ", ".join(methods)},
+                    )
+                response = handler(query)
         except HttpError as error:
             print("HTTP request rejected:", error.message)
-            self._try_send_error(client_socket, error.status_code, error.message, error.headers)
+            response = self._send_response(
+                error.status_code,
+                error.message,
+                headers=error.headers,
+            )
         except ValueError as error:
             print("HTTP request rejected:", error)
-            self._try_send_error(client_socket, 400, str(error))
+            response = self._send_response(400, str(error))
         except Exception as error:
             print("HTTP request failed:", error)
-            self._try_send_error(client_socket, 500, "Internal Server Error")
+            response = self._send_response(500, "Internal Server Error")
+        return self._collect_after(response)
+
+    @staticmethod
+    def _collect_after(response):
+        try:
+            for chunk in response:
+                yield chunk
         finally:
-            client_socket.close()
             gc.collect()
+
+    @classmethod
+    def _extract_complete_request(cls, raw_request):
+        request = raw_request
+        header_end = request.find(HTTP_HEADER_END)
+        if header_end < 0:
+            if len(request) > MAX_HTTP_HEADER_SIZE:
+                raise HttpError(413, "HTTP headers too large")
+            return None
+        if header_end > MAX_HTTP_HEADER_SIZE:
+            raise HttpError(413, "HTTP headers too large")
+
+        content_length = cls._parse_content_length(bytes(request[:header_end]))
+        if content_length > MAX_HTTP_BODY_SIZE:
+            raise HttpError(413, "HTTP body too large")
+        request_end = header_end + len(HTTP_HEADER_END) + content_length
+        if len(request) < request_end:
+            return None
+        return bytes(request[:request_end])
 
     @classmethod
     def _read_request(cls, client_socket):
@@ -177,44 +242,42 @@ class WebServer:
             raise HttpError(400, "Invalid Content-Length")
         return content_length
 
-    def _handle_page(self, client_socket, query):
-        self._send_page(client_socket)
+    def _handle_page(self, query):
+        return self._send_page()
 
-    def _handle_set_time(self, client_socket, query):
+    def _handle_set_time(self, query):
         self.controller.synchronize_time(query)
-        self._send_response(client_socket, 204, b"")
+        return self._send_response(204, b"")
 
-    def _handle_measurements(self, client_socket, query):
+    def _handle_measurements(self, query):
         body = json.dumps(self.controller.measurements_payload())
-        self._send_response(
-            client_socket,
+        return self._send_response(
             200,
             body,
             "application/json; charset=utf-8",
             headers={"Cache-Control": "no-store"},
         )
 
-    def _handle_delete_csv(self, client_socket, query):
+    def _handle_delete_csv(self, query):
         self.controller.delete_csv()
-        self._send_redirect(client_socket, "/")
+        return self._send_redirect("/")
 
-    def _handle_sensing_on(self, client_socket, query):
+    def _handle_sensing_on(self, query):
         if self.controller.start_sensing():
             self._set_led(True)
-        self._send_redirect(client_socket, "/")
+        return self._send_redirect("/")
 
-    def _handle_sensing_off(self, client_socket, query):
+    def _handle_sensing_off(self, query):
         self.controller.stop_sensing()
         self._set_led(False)
-        self._send_redirect(client_socket, "/")
+        return self._send_redirect("/")
 
-    def _send_page(self, client_socket):
+    def _send_page(self):
         gc.collect()
         payload = self.controller.dashboard_payload()
         payload["network_info"] = self._get_network_info()
         page = self.page_renderer.render(payload)
-        self._send_streaming_text_response(
-            client_socket,
+        return self._send_streaming_text_response(
             200,
             page,
             "text/html; charset=utf-8",
@@ -222,17 +285,16 @@ class WebServer:
 
     def _send_streaming_text_response(
         self,
-        client_socket,
         status_code,
         text,
         content_type,
     ):
         # Connection-close framing avoids allocating a second full-size UTF-8
         # copy of the dashboard page on memory-constrained MicroPython boards.
-        self._send_headers(client_socket, status_code, content_type, None)
+        yield self._send_headers(status_code, content_type, None)
         for offset in range(0, len(text), HTTP_RESPONSE_CHUNK_SIZE):
             chunk = text[offset:offset + HTTP_RESPONSE_CHUNK_SIZE]
-            client_socket.sendall(chunk.encode("utf-8"))
+            yield chunk.encode("utf-8")
 
     def _get_network_info(self):
         if self.network_info_provider is None:
@@ -244,23 +306,28 @@ class WebServer:
             }
         return self.network_info_provider.get_network_info()
 
-    def _send_csv(self, client_socket):
+    def _send_csv(self):
         filename = self.controller.prepare_csv_download()
         headers = {"Content-Disposition": 'attachment; filename="%s"' % filename}
-        self._send_headers(client_socket, 200, "text/csv; charset=utf-8", None, headers)
-        self.controller.send_csv(client_socket)
+        return self._stream_csv(headers)
 
-    def _send_redirect(self, client_socket, location):
-        self._send_response(client_socket, 303, b"", headers={"Location": location})
+    def _stream_csv(self, headers):
+        yield self._send_headers(200, "text/csv; charset=utf-8", None, headers)
+        for chunk in self.controller.iter_csv_chunks(HTTP_RESPONSE_CHUNK_SIZE):
+            yield chunk
 
-    def _send_response(self, client_socket, status_code, body, content_type="text/plain; charset=utf-8", headers=None):
+    def _send_redirect(self, location):
+        return self._send_response(303, b"", headers={"Location": location})
+
+    def _send_response(self, status_code, body, content_type="text/plain; charset=utf-8", headers=None):
         if isinstance(body, str):
             body = body.encode("utf-8")
-        self._send_headers(client_socket, status_code, content_type, len(body), headers)
+        chunks = [self._send_headers(status_code, content_type, len(body), headers)]
         if body:
-            client_socket.sendall(body)
+            chunks.append(body)
+        return chunks
 
-    def _send_headers(self, client_socket, status_code, content_type, content_length, headers=None):
+    def _send_headers(self, status_code, content_type, content_length, headers=None):
         reason = HTTP_REASONS.get(status_code, "See Other" if status_code == 303 else "OK")
         lines = ["HTTP/1.1 %d %s" % (status_code, reason), "Connection: close"]
         if content_type:
@@ -269,13 +336,7 @@ class WebServer:
             lines.append("Content-Length: %d" % content_length)
         for name, value in (headers or {}).items():
             lines.append("%s: %s" % (name, value))
-        client_socket.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("utf-8"))
-
-    def _try_send_error(self, client_socket, status_code, message, headers=None):
-        try:
-            self._send_response(client_socket, status_code, message, headers=headers)
-        except Exception as error:
-            print("HTTP error response failed:", error)
+        return ("\r\n".join(lines) + "\r\n\r\n").encode("utf-8")
 
     def _set_led(self, enabled):
         if self.led is None:

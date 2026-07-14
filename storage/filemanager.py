@@ -72,14 +72,34 @@ class FileHandler:
         finally:
             self._lock.release()
 
-    def send_to(self, client_socket):
-        self._lock.acquire()
+    def iter_chunks(self, chunk_size=512):
+        """호출 시점의 파일 크기까지만 잠금을 짧게 잡아 읽는다."""
+        file = open(self.file_path, "rb")
         try:
-            with open(self.file_path, "r") as file:
-                for line in file:
-                    client_socket.sendall(line.encode(self.encoding))
+            self._lock.acquire()
+            try:
+                file.seek(0, 2)
+                remaining = file.tell()
+                file.seek(0)
+            finally:
+                self._lock.release()
+
+            while remaining > 0:
+                self._lock.acquire()
+                try:
+                    chunk = file.read(min(chunk_size, remaining))
+                finally:
+                    self._lock.release()
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+                yield chunk
         finally:
-            self._lock.release()
+            file.close()
+
+    def send_to(self, client_socket):
+        for chunk in self.iter_chunks():
+            client_socket.sendall(chunk)
 
 
 class CsvWriter:
@@ -162,3 +182,6 @@ class CsvWriter:
 
     def send_to(self, client_socket):
         self.file_handler.send_to(client_socket)
+
+    def iter_chunks(self, chunk_size=512):
+        return self.file_handler.iter_chunks(chunk_size)
