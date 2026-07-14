@@ -8,10 +8,9 @@ except ImportError:
     def sleep_ms(milliseconds):
         sleep(milliseconds / 1000.0)
 
-WIFI_POWER_SAVE_DISABLED = 0xA11140
 OPEN_SECURITY = 0
-AP_RESET_DELAY_MS = 100
-AP_DHCP_READY_DELAY_MS = 250
+AP_RESET_DELAY_MS = 1000
+AP_DHCP_READY_DELAY_MS = 1000
 
 
 class AccessPoint:
@@ -22,10 +21,12 @@ class AccessPoint:
         self._configure()
 
     def _configure(self):
+        # CYW43 power-management tuning is intended for station mode and can
+        # make AP association unreliable on some clients. Keep the AP config
+        # minimal and let the firmware use its AP defaults.
         self.ap.config(
             ssid=self.ssid,
             security=OPEN_SECURITY,
-            pm=WIFI_POWER_SAVE_DISABLED,
         )
 
     def start(self, led=None):

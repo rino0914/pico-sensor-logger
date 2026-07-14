@@ -58,6 +58,7 @@ class AccessPointTest(unittest.TestCase):
         self.assertEqual("Pico_Science_01", self.network.ap.config_values["ssid"])
         self.assertEqual(0, self.network.ap.config_values["security"])
         self.assertNotIn("password", self.network.ap.config_values)
+        self.assertNotIn("pm", self.network.ap.config_values)
 
         access_point.start()
         self.assertTrue(self.network.ap.active_state)
